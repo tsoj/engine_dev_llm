@@ -144,8 +144,9 @@ merged_model = merged_model.merge_and_unload()
 # # Create a text generation pipeline
 generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer)  # Adjust device as needed
 
-# # Generate text
-# prompt = "Requirement already satisfied"
+# Generate text
+prompt = "Requirement already satisfied"
+
 # generated_text = generate_text(merged_model, tokenizer, prompt)
 # print(f"Generated text:\n{generated_text}")
 
