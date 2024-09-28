@@ -70,18 +70,18 @@ def load_and_chunk_dataset(data_path, chunk_size, overlap, test_size):
             while pos < len(text):
                 chunk_start = find_next_start(pos)
                 chunk_end = min(len(text), chunk_start + current_chunk_size)
+                if chunk_start >= len(text):
+                    break
                 assert chunk_start < chunk_end <= len(text)
                 chunk = header_text + text[chunk_start:chunk_end]
-                print("-----------------------------")
-                print(chunk)
-                assert pos < 500
                 if pos < split_point:
                     train_chunks.append(chunk)
                 else:
                     test_chunks.append(chunk)
                 pos = chunk_end - overlap
                 assert pos > 0
-
+                if pos <= chunk_start:
+                    break
 
     # Create train and test datasets
     train_dataset = Dataset.from_dict({"text": train_chunks})
@@ -105,26 +105,26 @@ tokenized_dataset = {
 training_args = TrainingArguments(
     output_dir="./results",
     num_train_epochs=1,
-    per_device_train_batch_size=1,
-    per_device_eval_batch_size=1,  # Add this line
-    gradient_accumulation_steps=8,
+    per_device_train_batch_size=4,
+    per_device_eval_batch_size=4,
+    gradient_accumulation_steps=1,
     warmup_steps=100,
     learning_rate=2e-4,
     fp16=True,
     logging_steps=10,
     save_steps=100,
     save_total_limit=2,
-    eval_strategy="steps",  # Add this line
-    eval_steps=20,  # Add this line
-    load_best_model_at_end=True,  # Add this line
-    metric_for_best_model="eval_loss",  # Add this line
+    eval_strategy="steps",
+    eval_steps=40,
+    load_best_model_at_end=True,
+    metric_for_best_model="eval_loss",
 )
 
 trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_dataset["train"],
-    eval_dataset=tokenized_dataset["test"],  # Add this line
+    eval_dataset=tokenized_dataset["test"],
     data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
 
@@ -166,8 +166,8 @@ base_model = AutoModelForCausalLM.from_pretrained(
 merged_model = PeftModel.from_pretrained(base_model, "./fine_tuned_model")
 merged_model = merged_model.merge_and_unload()
 
-# # Create a text generation pipeline
-generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer)  # Adjust device as needed
+# Create a text generation pipeline
+generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer)
 
 # Generate text
 prompt = "Requirement already satisfied"
