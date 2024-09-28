@@ -142,7 +142,7 @@ merged_model = PeftModel.from_pretrained(base_model, "./fine_tuned_model")
 merged_model = merged_model.merge_and_unload()
 
 # # Create a text generation pipeline
-# generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer)  # Adjust device as needed
+generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer, device="cuda")  # Adjust device as needed
 
 # # Generate text
 # prompt = "Requirement already satisfied"
