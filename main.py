@@ -104,12 +104,12 @@ tokenized_dataset = {
 # Set up the trainer
 training_args = TrainingArguments(
     output_dir="./results",
-    num_train_epochs=1,
+    num_train_epochs=2,
     per_device_train_batch_size=4,
     per_device_eval_batch_size=4,
-    gradient_accumulation_steps=1,
-    warmup_steps=100,
-    learning_rate=2e-4,
+    gradient_accumulation_steps=8,
+    warmup_steps=500,
+    learning_rate=8e-5,
     fp16=True,
     logging_steps=10,
     save_steps=100,
@@ -118,6 +118,7 @@ training_args = TrainingArguments(
     eval_steps=40,
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
+    lr_scheduler_type="linear",
 )
 
 trainer = Trainer(
