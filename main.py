@@ -52,7 +52,7 @@ def load_and_chunk_dataset(data_path, chunk_size, overlap, test_size):
 
     train_chunks = []
     test_chunks = []
-    for file_path in Path(data_path).glob("*.json"):
+    for file_path in Path(data_path).glob("*.txt"):
         print("Loading from", file_path)
 
         with open(file_path, 'r') as file:
