@@ -3,6 +3,7 @@ from dataclasses_json import dataclass_json, config, cfg
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
+from tqdm import tqdm
 
 cfg.global_config.encoders[datetime] = datetime.isoformat
 cfg.global_config.decoders[datetime] = datetime.fromisoformat
@@ -151,28 +152,22 @@ for file_path in in_path.glob("*.json"):
 
     with open(file_path, 'r') as file:
 
+        chat = Chat.from_json(file.read())
         id_to_message = {}
 
-        chat = Chat.from_json(file.read())
+        out_file_name = out_path / (chat.guild.name + " - " + chat.channel.name + ".txt")
+        with open(out_file_name, 'w') as file:
+            for message in tqdm(chat.messages):
+                assert message.id not in id_to_message
+                id_to_message[message.id] = message
 
-        chat_text = ""
-        for message in chat.messages:
-            assert message.id not in id_to_message
-            id_to_message[message.id] = message
+                file.write("<|" + message.author.name)
+                if message.type == "Reply" and message.reference.messageId in id_to_message:
+                    previous_message = id_to_message[message.reference.messageId]
+                    file.write(" replies to " + previous_message.author.name)
 
-            chat_text += "<|" + message.author.name
-            if message.type == "Reply" and message.reference.messageId in id_to_message:
-                previous_message = id_to_message[message.reference.messageId]
-                chat_text += " replies to " + previous_message.author.name
+                file.write("|>\n")
+                file.write(message.content)
+                file.write("</s>\n\n")
 
-            chat_text += "|>\n"
-            chat_text += message.content
-            chat_text += "</s>\n\n"
-
-        file_name = out_path / (chat.guild.name + " - " + chat.channel.name + ".txt")
-
-        with open(file_name, 'w') as file:
-            # Write text to the file
-            file.write(chat_text)
-            print("Finished", file_name)
-        # for
+        print("Finished", out_file_name)
