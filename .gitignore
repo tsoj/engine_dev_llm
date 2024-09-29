@@ -2,3 +2,5 @@ ext/
 fine_tuned_model/
 results/
 data/
+nohup.out
+fine_tuned_model_old/
