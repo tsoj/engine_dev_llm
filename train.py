@@ -20,11 +20,11 @@ device_map = {"": device_index}
 
 print("device_index:", device_index)
 
-model_name = "Qwen/Qwen2.5-7B"
+model_name = "Qwen/Qwen2.5-14B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
-character_context_length=6144#4096#8192
+character_context_length=4096#6144#4096#8192
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -43,8 +43,8 @@ model = AutoModelForCausalLM.from_pretrained(
 model = prepare_model_for_kbit_training(model)
 
 config = LoraConfig(
-    r=16,
-    lora_alpha=8,
+    r=128,
+    lora_alpha=256,
     # target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
     target_modules="all-linear",
     lora_dropout=0.05,
@@ -92,7 +92,7 @@ def load_and_chunk_dataset(data_path, chunk_size, overlap, test_size):
                     break
 
     # Create train and test datasets
-    train_dataset = Dataset.from_dict({"text": train_chunks})
+    train_dataset = Dataset.from_dict({"text": train_chunks[0:len(train_chunks) // 100]})
     test_dataset = Dataset.from_dict({"text": test_chunks})
 
     return {"train": train_dataset, "test": test_dataset}
@@ -102,7 +102,7 @@ def preprocess_function(examples):
     return tokenizer(examples["text"], truncation=True, max_length=character_context_length)
 
 # Load and split the dataset
-dataset = load_and_chunk_dataset("data/text", chunk_size=character_context_length, overlap=character_context_length//8, test_size=0.05)
+dataset = load_and_chunk_dataset("data/text", chunk_size=character_context_length, overlap=character_context_length//48, test_size=0.05)
 # Tokenize the datasets
 tokenized_dataset = {
     "train": dataset["train"].map(preprocess_function, batched=True, remove_columns=["text"]),
@@ -112,7 +112,7 @@ tokenized_dataset = {
 # Set up the trainer
 training_args = TrainingArguments(
     output_dir="./results",
-    num_train_epochs=3,
+    num_train_epochs=1,
     per_device_train_batch_size=1,
     per_device_eval_batch_size=1,
     gradient_accumulation_steps=8,
@@ -120,16 +120,13 @@ training_args = TrainingArguments(
     gradient_checkpointing_kwargs={"use_reentrant": False},
     eval_accumulation_steps=50,
     warmup_steps=500,
-    learning_rate=8e-5,
+    learning_rate=5e-5,
     fp16=True,
     logging_steps=10,
-    save_steps=500,
-    save_total_limit=2,
     eval_strategy="steps",
     eval_steps=500,
-    load_best_model_at_end=True,
-    metric_for_best_model="eval_loss",
-    lr_scheduler_type="linear",
+    save_strategy="epoch",
+    lr_scheduler_type="cosine", #"linear",
 )
 
 trainer = Trainer(
@@ -148,5 +145,10 @@ print(f"Final test loss: {test_results['eval_loss']}")
 
 model.save_pretrained("./fine_tuned_model")
 tokenizer.save_pretrained("./fine_tuned_model")
+
+model.merge_and_unload()
+
+merged_model.save_pretrained("./fully_merged_model")
+tokenizer.save_pretrained("./fully_merged_model")
 
 print("Finished :D")

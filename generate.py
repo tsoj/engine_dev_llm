@@ -59,9 +59,9 @@ generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer)
 # Generate text
 prompt = "Stockfish - engines-dev:\n<|zuppadcipolle|>"
 
-# generated_text = generate_text(merged_model, tokenizer, prompt)
-# print(f"Generated text:\n{generated_text}")
+generated_text = generate_text(merged_model, tokenizer, prompt)
+print(f"Generated text:\n{generated_text}")
 
 # Generate text using the pipeline (alternative method)
-pipeline_output = generator(prompt, max_length=character_context_length, truncation=True, num_return_sequences=1)
-print(f"Pipeline generated text:\n{pipeline_output[0]['generated_text']}")
+#pipeline_output = generator(prompt, max_length=character_context_length, truncation=True, num_return_sequences=1)
+#print(f"Pipeline generated text:\n{pipeline_output[0]['generated_text']}")
