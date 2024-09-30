@@ -35,12 +35,12 @@ bnb_config = BitsAndBytesConfig(
 
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
-    quantization_config=bnb_config,
+    #quantization_config=bnb_config,
     #device_map="auto",
     device_map=device_map,
 )
 
-model = prepare_model_for_kbit_training(model)
+#model = prepare_model_for_kbit_training(model)
 
 config = LoraConfig(
     r=16,
@@ -52,7 +52,7 @@ config = LoraConfig(
     task_type="CAUSAL_LM",
 )
 
-model = get_peft_model(model, config)
+#model = get_peft_model(model, config)
 model.gradient_checkpointing_disable()
 
 # Load and preprocess your dataset
