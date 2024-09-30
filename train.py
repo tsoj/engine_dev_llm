@@ -103,7 +103,7 @@ def preprocess_function(examples):
     return tokenizer(examples["text"], truncation=True, max_length=character_context_length)
 
 # Load and split the dataset
-dataset = load_and_chunk_dataset("data/text", char_chunk_size=character_context_length, char_overlap=character_context_length//48, test_train_ratio=0.05)
+dataset = load_and_chunk_dataset("data/text", char_chunk_size=character_context_length, char_overlap=character_context_length//48, test_train_ratio=0.05, tokenizer=tokenizer)
 # Tokenize the datasets
 tokenized_dataset = {
     "train": dataset["train"].map(preprocess_function, batched=True, remove_columns=["text"]),
