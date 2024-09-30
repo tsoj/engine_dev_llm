@@ -132,21 +132,17 @@ training_args = TrainingArguments(
     lr_scheduler_type="linear",
 )
 
+merged_model = PeftModel.from_pretrained(model, "./fine_tuned_model")
+merged_model = merged_model.merge_and_unload()
+
+
 trainer = Trainer(
-    model=model,
+    model=merged_model,
     args=training_args,
     train_dataset=tokenized_dataset["train"],
     eval_dataset=tokenized_dataset["test"],
     data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
 
-# Start training
-trainer.train()
-
 test_results = trainer.evaluate()
 print(f"Final test loss: {test_results['eval_loss']}")
-
-model.save_pretrained("./fine_tuned_model")
-tokenizer.save_pretrained("./fine_tuned_model")
-
-print("Finished :D")

@@ -65,7 +65,7 @@ merged_model = merged_model.merge_and_unload()
 generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer)
 
 # Generate text
-prompt = "Requirement already satisfied"
+prompt = "Stockfish - engines-dev:\n<|zuppadcipolle|>"
 
 # generated_text = generate_text(merged_model, tokenizer, prompt)
 # print(f"Generated text:\n{generated_text}")
