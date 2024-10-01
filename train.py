@@ -20,7 +20,7 @@ device_map = {"": device_index}
 
 print("device_index:", device_index)
 
-model_name = "Qwen/Qwen2.5-14B"
+model_name = "Qwen/Qwen2.5-7B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
@@ -149,7 +149,7 @@ tokenizer.save_pretrained("./fine_tuned_model")
 
 model.merge_and_unload()
 
-merged_model.save_pretrained("./fully_merged_model")
+model.save_pretrained("./fully_merged_model")
 tokenizer.save_pretrained("./fully_merged_model")
 
 print("Finished :D")
