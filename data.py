@@ -154,20 +154,30 @@ for file_path in in_path.glob("*.json"):
 
         chat = Chat.from_json(file.read())
         id_to_message = {}
+        last_author = None
 
         out_file_name = out_path / (chat.guild.name + " - " + chat.channel.name + ".txt")
         with open(out_file_name, 'w') as file:
+
             for message in tqdm(chat.messages):
                 assert message.id not in id_to_message
                 id_to_message[message.id] = message
 
-                file.write("<|" + message.author.name)
-                if message.type == "Reply" and message.reference.messageId in id_to_message:
-                    previous_message = id_to_message[message.reference.messageId]
-                    file.write(" replies to " + previous_message.author.name)
+                if message.author.name != last_author:
+                    if last_author is not None:
+                        file.write("</s>\n\n")
 
-                file.write("|>\n")
+                    file.write("<|" + message.author.name)
+                    if message.type == "Reply" and message.reference.messageId in id_to_message:
+                        previous_message = id_to_message[message.reference.messageId]
+                        file.write(" replies to " + previous_message.author.name)
+                    file.write("|>\n")
+                else:
+                    file.write("\n")
+
+                last_author = message.author.name
+
                 file.write(message.content)
-                file.write("</s>\n\n")
+            file.write("</s>\n\n")
 
         print("Finished", out_file_name)
