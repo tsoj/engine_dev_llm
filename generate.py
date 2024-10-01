@@ -36,7 +36,8 @@ class TextStreamerWithNoNewline(TextStreamer):
         super().__init__(tokenizer=tokenizer, skip_prompt=skip_prompt)
 
     def on_finalized_text(self, text: str, stream_end: bool = False):
-        return self.on_finalized_text(text, stream_end=False)
+        stream_end = False
+        print(text, flush=True, end="" if not stream_end else None)
 
 
 class MyStoppingCriteria(StoppingCriteria):
@@ -69,7 +70,7 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000, print_while_gen
         "user": GenerationConfig(
             do_sample=True,
             num_beams=1,
-            temperature=1.0,
+            temperature=1.2,
         )
     }
 
@@ -136,8 +137,8 @@ merged_model = merged_model.merge_and_unload()
 generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer)
 
 # Generate text
-#prompt = "Stockfish - engines-dev:\n<|tsoj|>\nZuppa, what do you think about leela data?</s>\n\n<|zuppadcipolle|>"
-prompt = "Stockfish - engines-dev:\n<|__arandomnoob replies to fuuryy|>\n"
+#prompt = "Stockfish - engines-dev:\n<|tsoj|>\n"
+prompt = "Engine Programming - ataxx:\n"
 
 generated_text = generate_text(merged_model, tokenizer, prompt, print_while_generating=True)
 #print(f"Generated text:\n{generated_text}")
