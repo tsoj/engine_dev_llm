@@ -29,7 +29,15 @@ model_name = "Qwen/Qwen2.5-14B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
-character_context_length=8192
+
+
+class TextStreamerWithNoNewline(TextStreamer):
+    def __init__(self, tokenizer, skip_prompt: bool):
+        super().__init__(tokenizer=tokenizer, skip_prompt=skip_prompt)
+
+    def on_finalized_text(self, text: str, stream_end: bool = False):
+        return self.on_finalized_text(text, stream_end=False)
+
 
 class MyStoppingCriteria(StoppingCriteria):
     def __init__(self, stops, text_so_far, tokenizer):
@@ -72,12 +80,14 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000, print_while_gen
 
     current_config = "normal" if prompt.count("|>") >= prompt.count("<|") else "user"
 
+    if print_while_generating:
+        print("----------------------")
     first_iteration = True
     while True:
 
         inputs = tokenizer(output, return_tensors="pt").to(model.device)
 
-        streamer = TextStreamer(tokenizer, skip_prompt=not first_iteration) if print_while_generating else None
+        streamer = TextStreamerWithNoNewline(tokenizer, skip_prompt=not first_iteration) if print_while_generating else None
         first_iteration = False
 
         #print("Using config:", current_config)
@@ -105,6 +115,9 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000, print_while_gen
         if num_generated_tokens >= max_new_tokens:
             break
 
+    if print_while_generating:
+        print("\n----------------------")
+
     return output
 
 # Load the base model for inference
@@ -128,4 +141,3 @@ prompt = "Stockfish - engines-dev:\n<|__arandomnoob replies to fuuryy|>\n"
 
 generated_text = generate_text(merged_model, tokenizer, prompt, print_while_generating=True)
 #print(f"Generated text:\n{generated_text}")
-
