@@ -11,7 +11,8 @@ from transformers import (
     DataCollatorForLanguageModeling,
     TextGenerationPipeline,
     GenerationConfig,
-    StoppingCriteria
+    StoppingCriteria,
+    TextStreamer
 )
 from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model, PeftModel
 from pathlib import Path
@@ -47,7 +48,7 @@ class MyStoppingCriteria(StoppingCriteria):
 
 # Text generation setup
 @torch.no_grad()
-def generate_text(model, tokenizer, prompt, max_new_tokens=1000):
+def generate_text(model, tokenizer, prompt, max_new_tokens=1000, print_while_generating=False):
 
     output = prompt
 
@@ -71,13 +72,18 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000):
 
     current_config = "normal" if prompt.count("|>") >= prompt.count("<|") else "user"
 
+    first_iteration = True
     while True:
 
         inputs = tokenizer(output, return_tensors="pt").to(model.device)
 
+        streamer = TextStreamer(tokenizer, skip_prompt=not first_iteration) if print_while_generating else None
+        first_iteration = False
+
         #print("Using config:", current_config)
         model_output = model.generate(
             **inputs,
+            streamer=streamer,
             generation_config=configs[current_config],
             max_length=None,
             max_new_tokens=max_new_tokens,
@@ -93,7 +99,8 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000):
 
         num_generated_tokens = len(model_output[0]) - len(tokenizer.encode(prompt))
 
-        print(f"Generated {num_generated_tokens}/{max_new_tokens} tokens")
+        if not print_while_generating:
+            print(f"Generated {num_generated_tokens}/{max_new_tokens} tokens")
 
         if num_generated_tokens >= max_new_tokens:
             break
@@ -119,9 +126,6 @@ generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer)
 #prompt = "Stockfish - engines-dev:\n<|tsoj|>\nZuppa, what do you think about leela data?</s>\n\n<|zuppadcipolle|>"
 prompt = "Stockfish - engines-dev:\n<|__arandomnoob replies to fuuryy|>\n"
 
-generated_text = generate_text(merged_model, tokenizer, prompt)
-print(f"Generated text:\n{generated_text}")
+generated_text = generate_text(merged_model, tokenizer, prompt, print_while_generating=True)
+#print(f"Generated text:\n{generated_text}")
 
-# Generate text using the pipeline (alternative method)
-#pipeline_output = generator(prompt, max_length=character_context_length, truncation=True, num_return_sequences=1)
-#print(f"Pipeline generated text:\n{pipeline_output[0]['generated_text']}")
