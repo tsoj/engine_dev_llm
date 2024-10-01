@@ -20,7 +20,7 @@ device_map = {"": device_index}
 
 print("device_index:", device_index)
 
-model_name = "Qwen/Qwen2.5-7B"
+model_name = "Qwen/Qwen2.5-14B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
@@ -61,7 +61,8 @@ merged_model = merged_model.merge_and_unload()
 generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer)
 
 # Generate text
-prompt = "Stockfish - engines-dev:\n<|zuppadcipolle|>"
+#prompt = "Stockfish - engines-dev:\n<|tsoj|>\nZuppa, what do you think about leela data?</s>\n\n<|zuppadcipolle|>"
+prompt = "Stockfish - engines-dev:\n<|sscg13|>\n"
 
 generated_text = generate_text(merged_model, tokenizer, prompt)
 print(f"Generated text:\n{generated_text}")

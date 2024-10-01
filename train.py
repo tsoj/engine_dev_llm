@@ -20,7 +20,7 @@ device_map = {"": device_index}
 
 print("device_index:", device_index)
 
-model_name = "Qwen/Qwen2.5-7B"
+model_name = "Qwen/Qwen2.5-14B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
@@ -45,8 +45,8 @@ model = prepare_model_for_kbit_training(model)
 config = LoraConfig(
     r=128,
     lora_alpha=256,
-    # target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    target_modules="all-linear",
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+    #target_modules="all-linear",
     lora_dropout=0.05,
     bias="none",
     task_type="CAUSAL_LM",
@@ -103,7 +103,7 @@ def preprocess_function(examples):
     return tokenizer(examples["text"], truncation=True, max_length=character_context_length)
 
 # Load and split the dataset
-dataset = load_and_chunk_dataset("data/text", char_chunk_size=character_context_length, char_overlap=character_context_length//48, test_train_ratio=0.05, tokenizer=tokenizer)
+dataset = load_and_chunk_dataset("data/text", char_chunk_size=character_context_length, char_overlap=character_context_length//48, test_train_ratio=0.01, tokenizer=tokenizer)
 # Tokenize the datasets
 tokenized_dataset = {
     "train": dataset["train"].map(preprocess_function, batched=True, remove_columns=["text"]),
@@ -113,7 +113,7 @@ tokenized_dataset = {
 # Set up the trainer
 training_args = TrainingArguments(
     output_dir="./results",
-    num_train_epochs=1,
+    num_train_epochs=2,
     per_device_train_batch_size=1,
     per_device_eval_batch_size=1,
     gradient_accumulation_steps=8,
