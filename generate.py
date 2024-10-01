@@ -32,7 +32,7 @@ character_context_length=8192
 
 class MyStoppingCriteria(StoppingCriteria):
     def __init__(self, stops, text_so_far, tokenizer):
-        self.stops = stops,
+        self.stops = stops
         self.tokenizer = tokenizer
         self.stop_counter = {}
         for stop in self.stops:
@@ -42,12 +42,12 @@ class MyStoppingCriteria(StoppingCriteria):
         generated_text = self.tokenizer.decode(input_ids[0])
         for stop in self.stops:
             if self.stop_counter[stop] < generated_text.count(stop):
-                return False
-        return True
+                return True
+        return False
 
 # Text generation setup
 @torch.no_grad()
-def generate_text(model, tokenizer, prompt, max_length=1000):
+def generate_text(model, tokenizer, prompt, max_new_tokens=1000):
 
     output = prompt
 
@@ -55,12 +55,12 @@ def generate_text(model, tokenizer, prompt, max_length=1000):
         "normal": GenerationConfig(
             do_sample=False,
             dola_layers="low",
-            repetition_penalty=2.0
+            repetition_penalty=2.0,
         ),
         "user": GenerationConfig(
             do_sample=True,
             num_beams=1,
-            temperature=2.0,
+            temperature=1.0,
         )
     }
 
@@ -69,34 +69,34 @@ def generate_text(model, tokenizer, prompt, max_length=1000):
         "user": ["|>", " "],
     }
 
-    current_config = "normal"
+    current_config = "normal" if prompt.count("|>") >= prompt.count("<|") else "user"
 
-    while len(output) < max_length:
+    while True:
 
         inputs = tokenizer(output, return_tensors="pt").to(model.device)
 
-        print("Using config:", current_config)
+        #print("Using config:", current_config)
         model_output = model.generate(
             **inputs,
             generation_config=configs[current_config],
-            max_length=max_length,
-            max_new_tokens=None,
+            max_length=None,
+            max_new_tokens=max_new_tokens,
+            pad_token_id=tokenizer.eos_token_id,
             stopping_criteria=[MyStoppingCriteria(stops[current_config], output, tokenizer)],
-            #num_return_sequences=1,
-            #temperature=0.7,
-            #top_k=50,
-            #top_p=0.95,
-            # do_sample=False,
-            # dola_layers="low",
-            # repetition_penalty=2.0,
-            #penalty_alpha=0.6, top_k=4,
         )
 
         output = tokenizer.decode(model_output[0], skip_special_tokens=True)
 
-        print("Stopped at:", output)
+        #print("Stopped at:", output, "\n-----------------------")
 
         current_config = "normal" if current_config == "user" else "user"
+
+        num_generated_tokens = len(model_output[0]) - len(tokenizer.encode(prompt))
+
+        print(f"Generated {num_generated_tokens}/{max_new_tokens} tokens")
+
+        if num_generated_tokens >= max_new_tokens:
+            break
 
     return output
 
@@ -117,7 +117,7 @@ generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer)
 
 # Generate text
 #prompt = "Stockfish - engines-dev:\n<|tsoj|>\nZuppa, what do you think about leela data?</s>\n\n<|zuppadcipolle|>"
-prompt = "Stockfish - engines-dev:\n<|ciekce|>\n"
+prompt = "Stockfish - engines-dev:\n<|__arandomnoob replies to fuuryy|>\n"
 
 generated_text = generate_text(merged_model, tokenizer, prompt)
 print(f"Generated text:\n{generated_text}")
