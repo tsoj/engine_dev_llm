@@ -27,17 +27,21 @@ tokenizer.pad_token = tokenizer.eos_token
 character_context_length=8192
 
 # Text generation setup
-def generate_text(model, tokenizer, prompt, max_length=100):
+def generate_text(model, tokenizer, prompt, max_length=1000):
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
             max_length=max_length,
-            num_return_sequences=1,
-            temperature=0.7,
-            top_k=50,
-            top_p=0.95,
-            do_sample=True
+            max_new_tokens=None,
+            #num_return_sequences=1,
+            #temperature=0.7,
+            #top_k=50,
+            #top_p=0.95,
+            do_sample=False,
+            dola_layers="low",
+            repetition_penalty=2.0,
+            #penalty_alpha=0.6, top_k=4,
         )
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
