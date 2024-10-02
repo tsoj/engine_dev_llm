@@ -127,8 +127,13 @@ model = AutoModelForCausalLM.from_pretrained(
     low_cpu_mem_usage=True,
 )
 
+
+#model.dequantize()
+
+
+
 # Generate text
-prompt = "Stockfish - engines-dev:\n<|Gold|>\n@typo Can you explain alpha-beta to me? I understand minimax I think."
+prompt = "Stockfish - engines-dev:\n"
 
 generated_text = generate_text(model, tokenizer, prompt, print_while_generating=True)
 #print(f"Generated text:\n{generated_text}")

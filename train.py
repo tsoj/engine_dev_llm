@@ -146,9 +146,6 @@ trainer.train()
 test_results = trainer.evaluate()
 print(f"Final test loss: {test_results['eval_loss']}")
 
-model.save_pretrained("./fine_tuned_lora_model")
-tokenizer.save_pretrained("./fine_tuned_lora_model")
-
 merged_model = model.merge_and_unload()
 
 merged_model.save_pretrained("./" + out_model_name)
