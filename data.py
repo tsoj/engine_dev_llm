@@ -162,14 +162,14 @@ for file_path in in_path.glob("*.json"):
             for message in tqdm(chat.messages):
                 assert message.id not in id_to_message
                 id_to_message[message.id] = message
+                previous_message = id_to_message[message.reference.messageId] if message.type == "Reply" and message.reference.messageId in id_to_message else None
 
-                if message.author.name != last_author:
+                if message.author.name != last_author or previous_message is not None:
                     if last_author is not None:
                         file.write("</s>\n\n")
 
                     file.write("<|" + message.author.name)
-                    if message.type == "Reply" and message.reference.messageId in id_to_message:
-                        previous_message = id_to_message[message.reference.messageId]
+                    if previous_message is not None:
                         file.write(" replies to " + previous_message.author.name)
                     file.write("|>\n")
                 else:
