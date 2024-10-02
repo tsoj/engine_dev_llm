@@ -12,13 +12,16 @@ from transformers import (
 )
 from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model, PeftModel
 from pathlib import Path
-
+from datetime import datetime
 from accelerate import Accelerator
 
 device_index = Accelerator().process_index
 device_map = {"": device_index}
 
 print("device_index:", device_index)
+
+out_model_name = "engine_dev_model_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+print("out_model_name:", out_model_name)
 
 model_name = "Qwen/Qwen2.5-14B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -46,7 +49,6 @@ config = LoraConfig(
     r=128,
     lora_alpha=256,
     target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    #target_modules="all-linear",
     lora_dropout=0.05,
     bias="none",
     task_type="CAUSAL_LM",
@@ -113,7 +115,7 @@ tokenized_dataset = {
 # Set up the trainer
 training_args = TrainingArguments(
     output_dir="./results",
-    num_train_epochs=2,
+    num_train_epochs=4,
     per_device_train_batch_size=1,
     per_device_eval_batch_size=1,
     gradient_accumulation_steps=8,
@@ -127,7 +129,7 @@ training_args = TrainingArguments(
     eval_strategy="steps",
     eval_steps=500,
     save_strategy="epoch",
-    lr_scheduler_type="cosine", #"linear",
+    lr_scheduler_type="cosine",
 )
 
 trainer = Trainer(
@@ -144,12 +146,12 @@ trainer.train()
 test_results = trainer.evaluate()
 print(f"Final test loss: {test_results['eval_loss']}")
 
-model.save_pretrained("./fine_tuned_model")
-tokenizer.save_pretrained("./fine_tuned_model")
+model.save_pretrained("./fine_tuned_lora_model")
+tokenizer.save_pretrained("./fine_tuned_lora_model")
 
-model.merge_and_unload()
+merged_model = model.merge_and_unload()
 
-model.save_pretrained("./fully_merged_model")
-tokenizer.save_pretrained("./fully_merged_model")
+merged_model.save_pretrained("./" + out_model_name)
+tokenizer.save_pretrained("./" + out_model_name)
 
 print("Finished :D")

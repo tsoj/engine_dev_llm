@@ -6,3 +6,5 @@ nohup.out
 fine_tuned_model_old/
 fine_tuned_model_2024-10-1-1822/
 fully_merged_model/
+engine_dev_model_*
+fine_tuned_lora_model/

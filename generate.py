@@ -25,12 +25,6 @@ device_map = {"": device_index}
 
 print("device_index:", device_index)
 
-model_name = "Qwen/Qwen2.5-14B"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-tokenizer.pad_token = tokenizer.eos_token
-
-
-
 class TextStreamerWithNoNewline(TextStreamer):
     def __init__(self, tokenizer, skip_prompt: bool):
         super().__init__(tokenizer=tokenizer, skip_prompt=skip_prompt)
@@ -121,24 +115,20 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000, print_while_gen
 
     return output
 
+model_name = "./engine_dev_model_2024-10-02-13-58-24"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer.pad_token = tokenizer.eos_token
+
 # Load the base model for inference
-base_model = AutoModelForCausalLM.from_pretrained(
+model = AutoModelForCausalLM.from_pretrained(
     model_name,
     device_map="auto",
     trust_remote_code=True,
     low_cpu_mem_usage=True,
 )
 
-# Merge the LoRA weights with the base model
-merged_model = PeftModel.from_pretrained(base_model, "./fine_tuned_model_2024-10-1-1822")
-merged_model = merged_model.merge_and_unload()
-
-# Create a text generation pipeline
-generator = TextGenerationPipeline(model=merged_model, tokenizer=tokenizer)
-
 # Generate text
-#prompt = "Stockfish - engines-dev:\n<|tsoj|>\n"
-prompt = "Engine Programming - ataxx:\n"
+prompt = "Stockfish - engines-dev:\n<|Gold|>\n@typo Can you explain alpha-beta to me? I understand minimax I think."
 
-generated_text = generate_text(merged_model, tokenizer, prompt, print_while_generating=True)
+generated_text = generate_text(model, tokenizer, prompt, print_while_generating=True)
 #print(f"Generated text:\n{generated_text}")
