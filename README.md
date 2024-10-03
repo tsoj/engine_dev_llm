@@ -4,7 +4,7 @@ Nvidia:
 ```bash
 conda create -n engine_dev_llm python=3.12
 conda activate engine_dev_llm
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+pip install torch --index-url https://download.pytorch.org/whl/cu124
 pip install transformers datasets peft bitsandbytes dataclasses-json
 ```
 
