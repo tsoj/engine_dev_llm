@@ -77,11 +77,12 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000, interactive=Fal
     skipping = False
     while True:
 
-        if interactive and current_config == "user" and not skipping:
-            assert len(output) >= 3 and output[-3:] == "\n<|", output
+        if interactive and not skipping and len(output) >= 2 and output[-2:] == "<|":
+            if current_config != "user":
+                print(f"\n\nWARNING: Entering username mode even though config is set to \"{current_config}\"\n\n")
 
             sys.stdout.write("\r\033[K")
-            sys.stdout.write("Next user ('a' for auto mode, 's' to skip, 'q' to quit): ")
+            sys.stdout.write("Next user ('a' for auto mode, '' to skip, 'q' to quit): ")
             sys.stdout.flush()
 
             # Get user input
@@ -94,12 +95,12 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000, interactive=Fal
 
             if user_input == "q":
                 break
-            if user_input in ["a", "s"]:
+            if user_input in ["a", ""]:
                 sys.stdout.write("<|")
                 sys.stdout.flush()
                 if user_input == "a":
                     interactive = False
-                if user_input == "s":
+                if user_input == "":
                     skipping = True
                 continue
 
