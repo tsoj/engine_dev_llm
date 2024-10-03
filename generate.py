@@ -14,16 +14,13 @@ from transformers import (
     StoppingCriteria,
     TextStreamer
 )
-from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model, PeftModel
 from pathlib import Path
 import sys
-from accelerate import Accelerator
-from transformers.generation.configuration_utils import GENERATION_CONFIG_NAME
 
-device_index = Accelerator().process_index
-device_map = {"": device_index}
-
-print("device_index:", device_index)
+if torch.cuda.is_available():
+    print("Using GPU:", torch.cuda.get_device_name())
+else:
+    print("Using CPU")
 
 class TextStreamerWithNoNewline(TextStreamer):
     def __init__(self, tokenizer, skip_prompt: bool):
@@ -159,16 +156,13 @@ model = AutoModelForCausalLM.from_pretrained(
     low_cpu_mem_usage=True,
 )
 
-
 #model.dequantize()
-
-
 
 # Generate text
 prompt = "Stockfish - engines-dev:\n"
-
 interactive = "interactive" in sys.argv[1:]
 max_new_tokens = 1000
+
 for arg in sys.argv[1:]:
     if arg.isdigit():
         max_new_tokens = int(arg)
