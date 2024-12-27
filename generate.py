@@ -75,7 +75,9 @@ class MyStoppingCriteria(StoppingCriteria):
 
 # Text generation setup
 @torch.no_grad()
-def generate_text(model, tokenizer, prompt, max_new_tokens=1000, interactive=False):
+def generate_text(model, tokenizer, prompt, max_new_chars, interactive=False):
+
+    num_generated_chars = 0
 
     output = prompt
 
@@ -150,7 +152,7 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000, interactive=Fal
                 streamer=streamer,
                 generation_config=configs[current_config],
                 max_length=None,
-                max_new_tokens=max_new_tokens,
+                max_new_tokens=character_context_length // 2,
                 pad_token_id=tokenizer.eos_token_id,
                 stopping_criteria=[MyStoppingCriteria(stops[current_config], output, tokenizer)],
             )
@@ -158,17 +160,15 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000, interactive=Fal
             previous_output = output
             output = tokenizer.decode(model_output[0], skip_special_tokens=True)
 
+            num_generated_chars += len(output) - len(previous_output)
+
             if is_inside_message(output) and count_chars_before_last_pipe_greater(output) >= max_single_message and not("</s>" in output[-8:]):
                 output += "</s>\n\n"
                 sys.stdout.write("</s>\n\n")
                 sys.stdout.flush()
 
-            #print("Stopped at:", output, "\n-----------------------")
 
-            num_new_generated_tokens = len(model_output[0]) - len(tokenizer.encode(previous_output))
-            num_total_generated_tokens = len(model_output[0]) - len(tokenizer.encode(prompt))
-
-            if (num_new_generated_tokens if interactive else num_total_generated_tokens) >= max_new_tokens:
+            if not interactive and num_generated_chars >= max_new_chars:
                 break
 
         current_config = "normal" if current_config == "user" else "user"
@@ -194,17 +194,17 @@ model = AutoModelForCausalLM.from_pretrained(
 # Generate text
 prompt = "Stockfish - engines-dev:\n"
 interactive = "interactive" in sys.argv[1:]
-max_new_tokens = 1000
+max_new_chars = 10000
 
 for arg in sys.argv[1:]:
     if arg.isdigit():
-        max_new_tokens = int(arg)
+        max_new_chars = int(arg)
     elif arg != "interactive":
         prompt = arg
 
 print("interactive:", interactive)
-print("max_new_tokens:", max_new_tokens)
+print("max_new_tokens:", max_new_chars)
 print(f"prompt: \"{prompt}\"")
 
 
-generate_text(model, tokenizer, prompt, max_new_tokens=max_new_tokens, interactive=interactive)
+generate_text(model, tokenizer, prompt, max_new_chars=max_new_chars, interactive=interactive)
