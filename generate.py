@@ -22,6 +22,31 @@ if torch.cuda.is_available():
 else:
     print("Using CPU")
 
+character_context_length=3072
+max_single_message=700
+
+def truncate_string(input_string, max_length):
+    lines = input_string.split('\n')
+    first_line = lines[0] + '\n\n'
+    remaining_text = '\n'.join(lines[1:])
+
+    while len(first_line) + len(remaining_text) > max_length or not remaining_text.startswith('<|'):
+        if len(remaining_text) > 0:
+            remaining_text = remaining_text[1:]
+        else:
+            break
+
+    return first_line + remaining_text
+
+def count_chars_before_last_pipe_greater(input_string):
+    last_pipe_greater_index = input_string.rfind('|>')
+    if last_pipe_greater_index == -1:
+        return 0  # No '|>' found in the string
+    return len(input_string) - last_pipe_greater_index - 2
+
+def is_inside_message(input_string):
+    return input_string.rfind('<|') <= input_string.rfind('|>')
+
 class TextStreamerWithNoNewline(TextStreamer):
     def __init__(self, tokenizer, skip_prompt: bool):
         super().__init__(tokenizer=tokenizer, skip_prompt=skip_prompt)
@@ -44,6 +69,8 @@ class MyStoppingCriteria(StoppingCriteria):
         for stop in self.stops:
             if self.stop_counter[stop] < generated_text.count(stop):
                 return True
+        if is_inside_message(generated_text) and count_chars_before_last_pipe_greater(generated_text) >= max_single_message:
+            return True
         return False
 
 # Text generation setup
@@ -109,6 +136,8 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000, interactive=Fal
             sys.stdout.flush()
             output += new_output
         else:
+            output = truncate_string(output, character_context_length)
+
             inputs = tokenizer(output, return_tensors="pt").to(model.device)
 
             streamer = TextStreamerWithNoNewline(tokenizer, skip_prompt=not first_iteration)
@@ -129,6 +158,11 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000, interactive=Fal
             previous_output = output
             output = tokenizer.decode(model_output[0], skip_special_tokens=True)
 
+            if is_inside_message(output) and count_chars_before_last_pipe_greater(output) >= max_single_message and not("</s>" in output[-8:]):
+                output += "</s>\n\n"
+                sys.stdout.write("</s>\n\n")
+                sys.stdout.flush()
+
             #print("Stopped at:", output, "\n-----------------------")
 
             num_new_generated_tokens = len(model_output[0]) - len(tokenizer.encode(previous_output))
@@ -142,8 +176,6 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=1000, interactive=Fal
 
 
     print("\n----------------------")
-
-    return output
 
 model_name = "./engine_dev_model_2024-10-02-13-58-24"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
