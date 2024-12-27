@@ -194,7 +194,7 @@ model = AutoModelForCausalLM.from_pretrained(
 # Generate text
 prompt = "Stockfish - engines-dev:\n"
 interactive = "interactive" in sys.argv[1:]
-max_new_chars = 10000
+max_new_chars = 1_000_000
 
 for arg in sys.argv[1:]:
     if arg.isdigit():
