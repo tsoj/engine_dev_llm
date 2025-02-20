@@ -144,7 +144,7 @@ class Chat:
     messageCount: int
 
 
-in_path = Path("data/engine_programming_discord")
+in_path = Path("data/discord_json_data")
 out_path = Path("data/text")
 
 for file_path in in_path.glob("*.json"):

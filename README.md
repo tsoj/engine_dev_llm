@@ -82,3 +82,31 @@ python generate.py interactive "Engine Programming - ataxx"
 "Stockfish - sf-dev"
 "Stockfish - sf-general"
 ```
+
+# How to get the data
+
+You can use https://github.com/Tyrrrz/DiscordChatExporter for that. Be careful with your account, ideally use some account that wouldn't matter much if it got compromised.
+
+List accessible servers and their IDs:
+```bash
+./DiscordChatExporter.Cli guilds -t "your.token"
+```
+
+If you want download just from a single server with ID `<server_id>`, you can do:
+```bash
+/path/to/DiscordChatExporter.Cli exportguild -t "your.token" -g <server_id> -f Json -o "./data/discord_json_data/[%G|%C][%g|%c].json"
+```
+
+To download from a selected number of servers, run the following script.
+`<server_id_N>` are the IDs of the servers you wanna download:
+```bash
+./download_servers.sh /path/to/DiscordChatExporter.Cli "your.token" <server_id_1> <server_id_2> <server_id_3>
+```
+
+If you want download from all accesible servers, you can do:
+```bash
+/path/to/DiscordChatExporter.Cli exportall -t "your.token" -f Json -o "./data/discord_json_data/[%G|%C][%g|%c].json"
+```
+
+For more detailed and potentially up to date info visit the above-mentioned github repo.
+The downloaded data must be in JSON format in the path `./data/discord_json_data/`.
