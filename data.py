@@ -137,7 +137,7 @@ class Message:
 @dataclass
 class Chat:
     guild: Guild
-    channel: Channel
+    channel: Optional[Channel]
     dateRange: DataRange
     exportedAt: datetime
     messages: List[Message]
@@ -146,6 +146,8 @@ class Chat:
 
 in_path = Path("data/discord_json_data")
 out_path = Path("data/text")
+
+out_path.mkdir(parents=True, exist_ok=False)
 
 for file_path in in_path.glob("*.json"):
     print("Loading from", file_path)
@@ -166,7 +168,7 @@ for file_path in in_path.glob("*.json"):
 
                 if message.author.name != last_author or previous_message is not None:
                     if last_author is not None:
-                        file.write("</s>\n\n")
+                        file.write("\n\n")
 
                     file.write("<|" + message.author.name)
                     if previous_message is not None:
@@ -178,6 +180,6 @@ for file_path in in_path.glob("*.json"):
                 last_author = message.author.name
 
                 file.write(message.content)
-            file.write("</s>\n\n")
+            file.write("\n\n")
 
         print("Finished", out_file_name)

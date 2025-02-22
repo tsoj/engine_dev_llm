@@ -162,9 +162,9 @@ def generate_text(model, tokenizer, prompt, max_new_chars, interactive=False):
 
             num_generated_chars += len(output) - len(previous_output)
 
-            if is_inside_message(output) and count_chars_before_last_pipe_greater(output) >= max_single_message and not("</s>" in output[-8:]):
-                output += "</s>\n\n"
-                sys.stdout.write("</s>\n\n")
+            if is_inside_message(output) and count_chars_before_last_pipe_greater(output) >= max_single_message:
+                output += "\n\n<|"
+                sys.stdout.write("\n\n<|")
                 sys.stdout.flush()
 
 
