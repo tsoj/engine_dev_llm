@@ -20,8 +20,8 @@ class Guild:
 class Channel:
     id: str
     type: str
-    categoryId: str
-    category: str
+    categoryId: Optional[str]
+    category: Optional[str]
     name: str
     topic: Optional[str]
 
@@ -137,7 +137,7 @@ class Message:
 @dataclass
 class Chat:
     guild: Guild
-    channel: Optional[Channel]
+    channel: Channel
     dateRange: DataRange
     exportedAt: datetime
     messages: List[Message]
