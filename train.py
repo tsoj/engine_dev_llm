@@ -61,7 +61,7 @@ def load_and_chunk_dataset(data_path, char_chunk_size, char_overlap, test_train_
 
     train_chunks = []
     test_chunks = []
-    for file_path in Path(data_path).glob("*.txt"):
+    for file_path in Path(data_path).glob("*-dev.txt"):
         print("Loading from", file_path)
 
         with open(file_path, 'r') as file:
@@ -130,7 +130,7 @@ training_args = TrainingArguments(
     eval_accumulation_steps=50,
     warmup_ratio=0.1,
     weight_decay=0.01,
-    learning_rate=5e-5,
+    learning_rate=5e-4,
     lr_scheduler_type="linear",
     fp16=True,
     logging_steps=10,
