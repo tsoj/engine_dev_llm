@@ -16,14 +16,13 @@ from transformers import (
 )
 from pathlib import Path
 import sys
+import constants
 
 if torch.cuda.is_available():
     print("Using GPU:", torch.cuda.get_device_name())
 else:
     print("Using CPU")
 
-character_context_length=3072
-max_single_message=700
 
 def truncate_string(input_string, max_length):
     lines = input_string.split('\n')
@@ -69,7 +68,7 @@ class MyStoppingCriteria(StoppingCriteria):
         for stop in self.stops:
             if self.stop_counter[stop] < generated_text.count(stop):
                 return True
-        if is_inside_message(generated_text) and count_chars_before_last_pipe_greater(generated_text) >= max_single_message:
+        if is_inside_message(generated_text) and count_chars_before_last_pipe_greater(generated_text) >= constants.max_single_message:
             return True
         return False
 
@@ -138,7 +137,7 @@ def generate_text(model, tokenizer, prompt, max_new_chars, interactive=False):
             sys.stdout.flush()
             output += new_output
         else:
-            output = truncate_string(output, character_context_length)
+            output = truncate_string(output, constants.character_context_length)
 
             inputs = tokenizer(output, return_tensors="pt").to(model.device)
 
@@ -152,7 +151,7 @@ def generate_text(model, tokenizer, prompt, max_new_chars, interactive=False):
                 streamer=streamer,
                 generation_config=configs[current_config],
                 max_length=None,
-                max_new_tokens=character_context_length // 2,
+                max_new_tokens=constants.character_context_length // 2,
                 pad_token_id=tokenizer.eos_token_id,
                 stopping_criteria=[MyStoppingCriteria(stops[current_config], output, tokenizer)],
             )
@@ -162,7 +161,7 @@ def generate_text(model, tokenizer, prompt, max_new_chars, interactive=False):
 
             num_generated_chars += len(output) - len(previous_output)
 
-            if is_inside_message(output) and count_chars_before_last_pipe_greater(output) >= max_single_message:
+            if is_inside_message(output) and count_chars_before_last_pipe_greater(output) >= constants.max_single_message:
                 output += "\n\n<|"
                 sys.stdout.write("\n\n<|")
                 sys.stdout.flush()

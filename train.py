@@ -14,6 +14,7 @@ from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model, Pe
 from pathlib import Path
 from datetime import datetime
 from accelerate import Accelerator
+import constants
 
 device_index = Accelerator().process_index
 device_map = {"": device_index}
@@ -23,11 +24,9 @@ print("device_index:", device_index)
 out_model_name = "engine_dev_model_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 print("out_model_name:", out_model_name)
 
-model_name = "Qwen/Qwen2.5-14B"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer = AutoTokenizer.from_pretrained(constants.model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
-character_context_length=4096#6144#4096#8192
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -37,7 +36,7 @@ bnb_config = BitsAndBytesConfig(
 )
 
 model = AutoModelForCausalLM.from_pretrained(
-    model_name,
+    constants.model_name,
     quantization_config=bnb_config,
     #device_map="auto",
     device_map=device_map,
@@ -102,10 +101,17 @@ def load_and_chunk_dataset(data_path, char_chunk_size, char_overlap, test_train_
 
 # Load and preprocess your dataset
 def preprocess_function(examples):
-    return tokenizer(examples["text"], truncation=True, max_length=character_context_length)
+    return tokenizer(examples["text"], truncation=True, max_length=constants.character_context_length)
 
 # Load and split the dataset
-dataset = load_and_chunk_dataset("data/text", char_chunk_size=character_context_length, char_overlap=character_context_length//48, test_train_ratio=0.01, tokenizer=tokenizer)
+dataset = load_and_chunk_dataset(
+    "data/text",
+    char_chunk_size=constants.character_context_length,
+    char_overlap=constants.character_context_length//48,
+    test_train_ratio=0.01,
+    tokenizer=tokenizer
+)
+
 # Tokenize the datasets
 tokenized_dataset = {
     "train": dataset["train"].map(preprocess_function, batched=True, remove_columns=["text"]),
