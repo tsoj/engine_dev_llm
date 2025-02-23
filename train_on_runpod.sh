@@ -2,16 +2,19 @@
 
 set -e
 
-cd /workspace
+# to run script:
+# cd /workspace
+# git clone https://github.com/tsoj/engine_dev_llm.git
+# cd engine_dev_llm
+# git switch more_data
+# ./train_on_runpod.sh
+
+
+mkdir data
 
 apt update && apt install nano nvtop
 
 export HF_HOME=/workspace/hf_cache/
-
-git clone https://github.com/tsoj/engine_dev_llm.git
-cd engine_dev_llm
-git switch more_data
-mkdir data
 
 pip install torch
 pip install transformers datasets peft bitsandbytes dataclasses-json
