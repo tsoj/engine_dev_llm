@@ -16,15 +16,14 @@ from datetime import datetime
 from accelerate import Accelerator
 import constants
 
-device_index = Accelerator().process_index
-device_map = {"": device_index}
-
-print("device_index:", device_index)
+# device_index = Accelerator().process_index
+# device_map = {"": device_index}
+# print("device_index:", device_index)
 
 out_model_name = "engine_dev_model_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 print("out_model_name:", out_model_name)
 
-tokenizer = AutoTokenizer.from_pretrained(constants.model_name)
+tokenizer = AutoTokenizer.from_pretrained(constants.model_name, token=constants.token)
 tokenizer.pad_token = tokenizer.eos_token
 
 
@@ -38,8 +37,9 @@ bnb_config = BitsAndBytesConfig(
 model = AutoModelForCausalLM.from_pretrained(
     constants.model_name,
     quantization_config=bnb_config,
-    #device_map="auto",
-    device_map=device_map,
+    device_map="auto",
+    # device_map=device_map,
+    token=constants.token,
 )
 
 model = prepare_model_for_kbit_training(model)
@@ -121,7 +121,7 @@ tokenized_dataset = {
 # Set up the trainer
 training_args = TrainingArguments(
     output_dir="./results",
-    num_train_epochs=4,
+    num_train_epochs=2,
     per_device_train_batch_size=1,
     per_device_eval_batch_size=1,
     gradient_accumulation_steps=1,
@@ -130,14 +130,14 @@ training_args = TrainingArguments(
     eval_accumulation_steps=50,
     warmup_ratio=0.1,
     weight_decay=0.01,
-    learning_rate=5e-4,
+    learning_rate=5e-5,
     lr_scheduler_type="linear",
     fp16=True,
     logging_steps=10,
     eval_strategy="steps",
-    eval_steps=200,
+    eval_steps=400,
     save_strategy="steps",
-    save_steps=200,
+    save_steps=400,
 )
 
 trainer = Trainer(
