@@ -13,32 +13,49 @@ from transformers import (
 from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model, PeftModel
 from pathlib import Path
 from datetime import datetime
-from accelerate import Accelerator
 import constants
+import os
 
-# device_index = Accelerator().process_index
-# device_map = {"": device_index}
-# print("device_index:", device_index)
+# Find latest checkpoint if it exists
+def get_latest_checkpoint(checkpoint_dir: Path) -> Path | None:
+    if not checkpoint_dir.exists():
+        return None
+
+    checkpoints = [d for d in checkpoint_dir.iterdir() if d.name.startswith("checkpoint-")]
+    if not checkpoints:
+        return None
+
+    # Sort checkpoints by number
+    return max(checkpoints, key=lambda x: int(x.name.split("-")[1]))
 
 out_model_name = "engine_dev_model_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 print("out_model_name:", out_model_name)
+
+# Define checkpoint directory
+checkpoint_dir = Path("./checkpoints")
+checkpoint_dir.mkdir(exist_ok=True)
+
+latest_checkpoint = get_latest_checkpoint(checkpoint_dir)
+if latest_checkpoint:
+    print(f"IMPORTANT: Found existing checkpoint at {latest_checkpoint}. Will resume training...")
+else:
+    print("IMPORTANT: Starting training from scratch ...")
 
 tokenizer = AutoTokenizer.from_pretrained(constants.model_name, token=constants.token)
 tokenizer.pad_token = tokenizer.eos_token
 
 
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_compute_dtype=torch.bfloat16,
-)
+# bnb_config = BitsAndBytesConfig(
+#     load_in_4bit=True,
+#     bnb_4bit_quant_type="nf4",
+#     bnb_4bit_use_double_quant=True,
+#     bnb_4bit_compute_dtype=torch.bfloat16,
+# )
 
 model = AutoModelForCausalLM.from_pretrained(
     constants.model_name,
-    quantization_config=bnb_config,
+    # quantization_config=bnb_config,
     device_map="auto",
-    # device_map=device_map,
     token=constants.token,
 )
 
@@ -120,7 +137,7 @@ tokenized_dataset = {
 
 # Set up the trainer
 training_args = TrainingArguments(
-    output_dir="./results",
+    output_dir=str(checkpoint_dir),
     num_train_epochs=2,
     per_device_train_batch_size=1,
     per_device_eval_batch_size=1,
@@ -138,6 +155,9 @@ training_args = TrainingArguments(
     eval_steps=400,
     save_strategy="steps",
     save_steps=400,
+    save_total_limit=100,
+    load_best_model_at_end=True,
+    metric_for_best_model="eval_loss"
 )
 
 trainer = Trainer(
@@ -149,7 +169,7 @@ trainer = Trainer(
 )
 
 # Start training
-trainer.train()
+trainer.train(resume_from_checkpoint=str(latest_checkpoint) if latest_checkpoint else None )
 
 test_results = trainer.evaluate()
 print(f"Final test loss: {test_results['eval_loss']}")
