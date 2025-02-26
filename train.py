@@ -153,12 +153,10 @@ training_args = TrainingArguments(
     fp16=True,
     logging_steps=10,
     eval_strategy="steps",
-    eval_steps=400,
+    eval_steps=8000,
     save_strategy="steps",
-    save_steps=400,
-    save_total_limit=10,
-    load_best_model_at_end=True,
-    metric_for_best_model="eval_loss"
+    save_steps=1000,
+    save_total_limit=12,
 )
 
 trainer = Trainer(
