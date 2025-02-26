@@ -36,10 +36,11 @@ checkpoint_dir = Path("./checkpoints")
 checkpoint_dir.mkdir(exist_ok=True)
 
 latest_checkpoint = get_latest_checkpoint(checkpoint_dir)
+important_string = "\033[31m\033[3m\033[1mIMPORTANT\033[0m"
 if latest_checkpoint:
-    print(f"IMPORTANT: Found existing checkpoint at {latest_checkpoint}. Will resume training...")
+    print(f"{important_string}: Found existing checkpoint at {latest_checkpoint}. Will resume training...")
 else:
-    print("IMPORTANT: Starting training from scratch ...")
+    print(f"{important_string}: Starting training from scratch ...")
 
 tokenizer = AutoTokenizer.from_pretrained(constants.model_name, token=constants.token)
 tokenizer.pad_token = tokenizer.eos_token
