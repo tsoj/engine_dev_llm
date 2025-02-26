@@ -119,13 +119,13 @@ def load_and_chunk_dataset(data_path, char_chunk_size, char_overlap, test_train_
 
 # Load and preprocess your dataset
 def preprocess_function(examples):
-    return tokenizer(examples["text"], truncation=True, max_length=constants.character_context_length)
+    return tokenizer(examples["text"], truncation=True, max_length=constants.max_token_context_length)
 
 # Load and split the dataset
 dataset = load_and_chunk_dataset(
     "data/text",
-    char_chunk_size=constants.character_context_length,
-    char_overlap=constants.character_context_length//48,
+    char_chunk_size=constants.max_character_context_length,
+    char_overlap=constants.max_character_context_length//48,
     test_train_ratio=0.01,
     tokenizer=tokenizer
 )
