@@ -155,7 +155,7 @@ training_args = TrainingArguments(
     eval_steps=400,
     save_strategy="steps",
     save_steps=400,
-    save_total_limit=100,
+    save_total_limit=10,
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss"
 )
