@@ -78,7 +78,7 @@ def load_and_chunk_dataset(data_path, char_chunk_size, char_overlap, test_train_
 
     train_chunks = []
     test_chunks = []
-    for file_path in Path(data_path).glob("*-dev.txt"):
+    for file_path in Path(data_path).glob("*.txt"):
         print("Loading from", file_path)
 
         with open(file_path, 'r') as file:
