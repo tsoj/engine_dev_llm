@@ -12,9 +12,10 @@ AMD:
 ```bash
 conda create -n engine_dev_llm python=3.12
 conda activate engine_dev_llm
-pip install torch --index-url https://download.pytorch.org/whl/rocm6.1/
-pip install 'https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_multi-backend-refactor/bitsandbytes-0.44.1.dev0-py3-none-manylinux_2_24_x86_64.whl'
+pip install --force-reinstall pytorch-triton-rocm==3.1.0 --index-url https://download.pytorch.org/whl/nightly/rocm6.3
 pip install transformers datasets peft dataclasses-json
+pip install --force-reinstall 'https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_multi-backend-refactor/bitsandbytes-0.44.1.dev0-py3-none-manylinux_2_24_x86_64.whl' --no-deps
+
 ```
 
 # Train

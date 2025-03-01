@@ -17,6 +17,7 @@ from transformers import (
 from pathlib import Path
 import sys
 import constants
+from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model, PeftModel
 
 if torch.cuda.is_available():
     print("Using GPU:", torch.cuda.get_device_name())
@@ -176,19 +177,33 @@ def generate_text(model, tokenizer, prompt, max_new_chars, interactive=False):
 
     print("\n----------------------")
 
-model_name = "./engine_dev_model_2025-02-26-04-59-14"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-tokenizer.pad_token = tokenizer.eos_token
+model_name = "engine_dev_model_2025-02-28-23-04-06_LORA"
 
-# Load the base model for inference
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    device_map="auto",
-    trust_remote_code=True,
-    low_cpu_mem_usage=True,
+
+# Define the quantization configuration
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_compute_dtype=torch.bfloat16,
 )
 
-#model.dequantize()
+# Load the base model with quantization
+base_model = AutoModelForCausalLM.from_pretrained(
+    constants.model_name,
+    quantization_config=bnb_config,
+    device_map='auto',
+    trust_remote_code=True  # If required for some models
+)
+
+# Load the tokenizer
+tokenizer = AutoTokenizer.from_pretrained(constants.model_name)
+
+# Apply the LoRA adapters
+model = PeftModel.from_pretrained(base_model, "./" + model_name)
+
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer.pad_token = tokenizer.eos_token
 
 # Generate text
 prompt = "Stockfish - engines-dev:\n"
