@@ -173,9 +173,14 @@ trainer.train(resume_from_checkpoint=str(latest_checkpoint) if latest_checkpoint
 test_results = trainer.evaluate()
 print(f"Final test loss: {test_results['eval_loss']}")
 
+lora_model_filepath = "./" + out_model_name + "_LORA"
+model.save_pretrained(lora_model_filepath)
+tokenizer.save_pretrained(lora_model_filepath)
+
 merged_model = model.merge_and_unload()
 
-merged_model.save_pretrained("./" + out_model_name)
-tokenizer.save_pretrained("./" + out_model_name)
+merged_model_filepath = "./" + out_model_name + "_merged"
+merged_model.save_pretrained(merged_model_filepath)
+tokenizer.save_pretrained(merged_model_filepath)
 
 print("Finished :D")

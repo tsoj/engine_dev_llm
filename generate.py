@@ -68,7 +68,7 @@ class MyStoppingCriteria(StoppingCriteria):
         for stop in self.stops:
             if self.stop_counter[stop] < generated_text.count(stop):
                 return True
-        if is_inside_message(generated_text) and count_chars_before_last_pipe_greater(generated_text) >= constants.max_single_message_characters:
+        if is_inside_message(generated_text) and count_chars_before_last_pipe_greater(generated_text) >= constants.max_single_message:
             return True
         return False
 
@@ -161,7 +161,7 @@ def generate_text(model, tokenizer, prompt, max_new_chars, interactive=False):
 
             num_generated_chars += len(output) - len(previous_output)
 
-            if is_inside_message(output) and count_chars_before_last_pipe_greater(output) >= constants.max_single_message_characters:
+            if is_inside_message(output) and count_chars_before_last_pipe_greater(output) >= constants.max_single_message:
                 output += "\n\n<|"
                 sys.stdout.write("\n\n<|")
                 sys.stdout.flush()
@@ -176,7 +176,7 @@ def generate_text(model, tokenizer, prompt, max_new_chars, interactive=False):
 
     print("\n----------------------")
 
-model_name = "./engine_dev_model_2024-10-02-13-58-24"
+model_name = "./engine_dev_model_2025-02-26-04-59-14"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
