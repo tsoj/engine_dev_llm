@@ -206,7 +206,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
 # Generate text
-prompt = "Stockfish - engines-dev:\n"
+prompt = "Stockfish - engines-dev"
 interactive = "interactive" in sys.argv[1:]
 max_new_chars = 1_000_000
 
