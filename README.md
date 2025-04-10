@@ -23,9 +23,6 @@ Needs roughly 80 GB VRAM.
 python train.py
 ```
 
-If one GPU is not enough to hold an entire model, then enable gradient_checkpoint again, adjust the batchsize and gradient accumulation steps.
-Then run the main.py script normally with `python train.py`.
-
 # Generate
 
 Needs roughly 20 GB memory.
