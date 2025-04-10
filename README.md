@@ -17,10 +17,9 @@ You can download the fine-tuned LoRA parameters from [here](https://drive.google
 
 # Train
 
-Needs roughly 80 GB memory per GPU.
+Needs roughly 80 GB VRAM.
 
 ```bash
-# replace 3 with the number of GPUs you want to train on
 python train.py
 ```
 
