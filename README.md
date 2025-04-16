@@ -9,7 +9,13 @@ pip install transformers datasets peft bitsandbytes dataclasses-json
 ```
 
 AMD:
-Worked once on my AMD RX 7900XT, but then it stopped because some python package incompatibility. Probably will work again at some point but right now I can't write any reliable setup instructions for AMD down.
+```bash
+conda create -n engine_dev_llm python=3.12
+conda activate engine_dev_llm
+pip install transformers datasets peft dataclasses-json
+pip install --force-reinstall 'https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_multi-backend-refactor/bitsandbytes-0.44.1.dev0-py3-none-manylinux_2_24_x86_64.whl'
+pip install --force-reinstall pytorch-triton-rocm==3.1.0 torch==2.5.1+rocm6.2 --index-url https://download.pytorch.org/whl/rocm6.2
+```
 
 Since the current model is based on Mistral-Small-24B-Base-2501 you may need to set the environment variable `HF_TOKEN` to your Hugging Face token with read access, since you need to agree to some stuff to access the Mistral Small 3 models.
 
