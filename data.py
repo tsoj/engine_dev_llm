@@ -1,12 +1,33 @@
+"""Convert DiscordChatExporter JSON exports into a ChatML-formatted dataset.
+
+Each Discord message becomes one ChatML block::
+
+    <|im_start|>{author}[ replies to {other}]
+    {content}<|im_end|>
+
+Messages from a channel are concatenated and split into chunks that fit within
+``constants.max_token_context_length`` tokens (measured with the model's real
+tokenizer, split on message boundaries). Every chunk is prefixed with a small
+system header naming the channel, and written as one row of a JSONL file with a
+single ``text`` field — exactly what TRL's SFTTrainer consumes for
+language-modeling (full-sequence-loss) training.
+"""
+
+import json
 from dataclasses import dataclass, field
-from dataclasses_json import dataclass_json, config, cfg
+from dataclasses_json import dataclass_json, cfg
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
+
 from tqdm import tqdm
+from transformers import AutoProcessor
+
+import constants
 
 cfg.global_config.encoders[datetime] = datetime.isoformat
 cfg.global_config.decoders[datetime] = datetime.fromisoformat
+
 
 @dataclass_json
 @dataclass
@@ -98,8 +119,8 @@ class User:
     nickname: str
     isBot: bool
     avatarUrl: str
-    color: Optional[str]  = field(default=None)
-    roles: Optional[List[Role]]  = field(default=None)
+    color: Optional[str] = field(default=None)
+    roles: Optional[List[Role]] = field(default=None)
 
 @dataclass_json
 @dataclass
@@ -144,42 +165,115 @@ class Chat:
     messageCount: int
 
 
-in_path = Path("data/discord_json_data")
-out_path = Path("data/text")
+def sanitize(content: str) -> str:
+    """Strip literal ChatML delimiters out of user content so they can't be
+    confused with structural tokens during training."""
+    return content.replace(constants.IM_START, "").replace(constants.IM_END, "").strip()
 
-out_path.mkdir(parents=True, exist_ok=False)
 
-for file_path in in_path.glob("*.json"):
-    print("Loading from", file_path)
+def message_role(message: Message, previous: Optional[Message]) -> str:
+    role = message.author.name
+    if previous is not None:
+        role += f" replies to {previous.author.name}"
+    return role
 
-    with open(file_path, 'r') as file:
 
-        chat = Chat.from_json(file.read())
-        id_to_message = {}
-        last_author = None
+def format_block(role: str, content: str) -> str:
+    return f"{constants.IM_START}{role}\n{content}{constants.IM_END}\n"
 
-        out_file_name = out_path / (chat.guild.name + " - " + chat.channel.name + ".txt")
-        with open(out_file_name, 'w') as file:
 
-            for message in tqdm(chat.messages):
-                assert message.id not in id_to_message
-                id_to_message[message.id] = message
-                previous_message = id_to_message[message.reference.messageId] if message.type == "Reply" and message.reference.messageId in id_to_message else None
+def format_message(message: Message, previous: Optional[Message]) -> str:
+    return format_block(message_role(message, previous), sanitize(message.content))
 
-                if message.author.name != last_author or previous_message is not None:
-                    if last_author is not None:
-                        file.write("\n\n")
 
-                    file.write("<|" + message.author.name)
-                    if previous_message is not None:
-                        file.write(" replies to " + previous_message.author.name)
-                    file.write("|>\n")
-                else:
-                    file.write("\n")
+def system_header(chat: Chat) -> str:
+    channel = f"{chat.guild.name} - {chat.channel.name}"
+    return f"{constants.IM_START}system\nChannel: {channel}{constants.IM_END}\n"
 
-                last_author = message.author.name
 
-                file.write(message.content)
-            file.write("\n\n")
+def chunk_channel(chat: Chat, tokenizer, max_tokens: int):
+    """Yield ChatML text chunks for one channel, each <= max_tokens tokens."""
+    header = system_header(chat)
+    header_len = len(tokenizer.encode(header))
+    budget = max_tokens - header_len
 
-        print("Finished", out_file_name)
+    id_to_message = {}
+    buffer: List[str] = []
+    buffer_len = 0
+
+    def flush():
+        nonlocal buffer, buffer_len
+        if buffer:
+            yield_text = header + "".join(buffer)
+            buffer = []
+            buffer_len = 0
+            return yield_text
+        return None
+
+    for message in chat.messages:
+        id_to_message[message.id] = message
+        previous = None
+        if (
+            message.type == "Reply"
+            and message.reference is not None
+            and message.reference.messageId in id_to_message
+        ):
+            previous = id_to_message[message.reference.messageId]
+
+        if not sanitize(message.content):
+            continue
+
+        block = format_message(message, previous)
+        block_len = len(tokenizer.encode(block))
+
+        # A single oversized message: truncate only its content, keeping the
+        # role prefix and closing <|im_end|> intact so delimiters stay valid.
+        if block_len > budget:
+            role = message_role(message, previous)
+            empty_len = len(tokenizer.encode(format_block(role, "")))
+            if empty_len >= budget:
+                continue  # role line alone doesn't fit; drop the message
+            content_ids = tokenizer.encode(sanitize(message.content))[: budget - empty_len]
+            content = tokenizer.decode(content_ids, skip_special_tokens=True)
+            block = format_block(role, content)
+            block_len = len(tokenizer.encode(block))
+
+        if buffer_len + block_len > budget:
+            text = flush()
+            if text is not None:
+                yield text
+
+        buffer.append(block)
+        buffer_len += block_len
+
+    text = flush()
+    if text is not None:
+        yield text
+
+
+def main():
+    tokenizer = AutoProcessor.from_pretrained(constants.model_name, token=constants.hf_token).tokenizer
+
+    in_path = Path(constants.discord_json_dir)
+    out_path = Path(constants.dataset_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    n_chunks = 0
+    with open(out_path, "w") as out_file:
+        for file_path in sorted(in_path.glob("*.json")):
+            print("Loading from", file_path)
+            with open(file_path) as f:
+                chat = Chat.from_json(f.read())
+
+            for text in tqdm(
+                chunk_channel(chat, tokenizer, constants.max_token_context_length),
+                desc=f"{chat.guild.name} - {chat.channel.name}",
+            ):
+                out_file.write(json.dumps({"text": text}) + "\n")
+                n_chunks += 1
+
+    print(f"Wrote {n_chunks} chunks to {out_path}")
+
+
+if __name__ == "__main__":
+    main()

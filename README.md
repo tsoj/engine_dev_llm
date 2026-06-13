@@ -1,48 +1,62 @@
 # Setup
 
-Nvidia:
-```bash
-conda create -n engine_dev_llm python=3.12
-conda activate engine_dev_llm
-pip install torch --index-url https://download.pytorch.org/whl/cu124
-pip install transformers datasets peft bitsandbytes dataclasses-json
-```
-
-AMD:
-```bash
-conda create -n engine_dev_llm python=3.12
-conda activate engine_dev_llm
-pip install transformers datasets peft dataclasses-json
-pip install --force-reinstall 'https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_multi-backend-refactor/bitsandbytes-0.44.1.dev0-py3-none-manylinux_2_24_x86_64.whl'
-pip install --force-reinstall pytorch-triton-rocm==3.1.0 torch==2.5.1+rocm6.2 --index-url https://download.pytorch.org/whl/rocm6.2
-```
-
-Since the current model is based on Mistral-Small-24B-Base-2501 you may need to set the environment variable `HF_TOKEN` to your Hugging Face token with read access, since you need to agree to some stuff to access the Mistral Small 3 models.
-
-You can download the fine-tuned LoRA parameters from [here](https://drive.google.com/file/d/10qyp5_XQpJcC6Nq5EbLCa8p_ed-qePHD/view?usp=drive_link). Unzip them into this repo project dir.
-
-# Train
-
-Needs roughly 80 GB VRAM.
+Dependencies are managed with [uv](https://docs.astral.sh/uv/). Pick the extra
+matching your GPU vendor (exactly one):
 
 ```bash
-python train.py
+# NVIDIA (CUDA 13.0) — e.g. the 80 GB H100 used for training
+uv sync --extra cuda
+
+# AMD (ROCm 7.2, Linux only)
+uv sync --extra rocm
+
+# CPU only (inference experiments / no GPU)
+uv sync --extra cpu
 ```
 
-# Generate
+Run any script with `uv run python <script>.py`.
 
-Needs roughly 20 GB memory.
+The current model is `Qwen/Qwen3.6-27B`. It is a *multimodal* causal LM (text
+decoder + vision encoder), but we train and sample it on **text only**: no
+images are ever passed, so the vision tower never runs, and LoRA is scoped to
+the language layers. This needs a recent `transformers` (5.x) — `uv sync` pulls
+it in. Set a Hugging Face token with read access if the model is gated:
 
 ```bash
-# generates 1000 tokens
-python generate.py 1000
-
-# interactive version
-python generate.py interactive
-
-# custom prompt
-python generate.py interactive "Engine Programming - ataxx"
+export HF_TOKEN=hf_...
 ```
+
+# Pipeline
+
+1. **Build the dataset** — convert the Discord JSON exports (see *How to get the
+   data* below) into a ChatML JSONL file at `data/dataset.jsonl`:
+
+   ```bash
+   uv run python data.py
+   ```
+
+2. **Train** — QLoRA fine-tune tuned for a single 80 GB H100. Resumes from the
+   latest checkpoint in `checkpoints/` automatically:
+
+   ```bash
+   uv run python train.py
+   ```
+
+   Set `MERGE_MODEL=1` to also export a standalone merged model (needs the base
+   in bf16, ~54 GB).
+
+3. **Generate** — sample a continuing multi-party conversation. Point
+   `--adapter` at the `*_LORA` (or `*_merged`) directory train.py produced:
+
+   ```bash
+   # auto-generate 30 messages in a channel
+   uv run python generate.py --adapter ./engine_dev_model_..._LORA \
+       --prompt "Stockfish - engines-dev" --max-messages 30
+
+   # interactive: you choose the next speaker each turn
+   uv run python generate.py --adapter ./engine_dev_model_..._LORA \
+       --prompt "Engine Programming - ataxx" --interactive
+   ```
 
 ## Supported channel prompts
 
