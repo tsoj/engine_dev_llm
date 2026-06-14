@@ -14,6 +14,9 @@ dependencies = [
     "bitsandbytes>=0.45",
     "dataclasses-json>=0.6",
     "tqdm>=4.66",
+    # The Qwen3.6 multimodal processor (AutoProcessor) loads an image processor
+    # that needs pillow + torchvision, even though we only ever feed text.
+    "pillow>=10.0",
 ]
 
 [dependency-groups]
@@ -26,9 +29,9 @@ dev = ["pyright>=1.1.390"]
 #   uv sync --extra cpu    → CPU (works everywhere)
 #   uv sync --extra cuda   → CUDA 13.0 (NVIDIA GPUs, e.g. the H100)
 #   uv sync --extra rocm   → ROCm 7.2  (AMD GPUs, Linux only)
-cpu  = ["torch>=2.7"]
-cuda = ["torch>=2.7"]
-rocm = ["torch>=2.7", "triton-rocm"]
+cpu  = ["torch>=2.7", "torchvision"]
+cuda = ["torch>=2.7", "torchvision"]
+rocm = ["torch>=2.7", "torchvision", "triton-rocm"]
 
 [tool.uv]
 package = false
@@ -42,6 +45,11 @@ conflicts = [
 
 [tool.uv.sources]
 torch = [
+  { index = "pytorch-cpu",  extra = "cpu" },
+  { index = "pytorch-cuda", extra = "cuda" },
+  { index = "pytorch-rocm", extra = "rocm" },
+]
+torchvision = [
   { index = "pytorch-cpu",  extra = "cpu" },
   { index = "pytorch-cuda", extra = "cuda" },
   { index = "pytorch-rocm", extra = "rocm" },
