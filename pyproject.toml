@@ -2,27 +2,26 @@
 name = "engine-dev-llm"
 version = "0.1.0"
 description = "Fine-tune an LLM on chess-engine-dev Discord chats to simulate the community."
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11,<3.14"
 dependencies = [
-    # transformers 5.x is required for Qwen3.6 (Qwen3_5ForConditionalGeneration
-    # / AutoModelForMultimodalLM). trl 1.x for the SFTConfig API used in train.py.
-    "transformers>=5.0",
+    # transformers 5.x for Gemma 4 (gemma4_unified) and AutoModelForMultimodalLM;
+    # trl >= 1.6 for loss_type="chunked_nll".
+    "transformers>=5.12",
     "datasets>=3.2",
     "peft>=0.17",
-    "trl>=1.0",
+    "trl>=1.6",
     "accelerate>=1.3",
     "bitsandbytes>=0.45",
-    "dataclasses-json>=0.6",
+    "numpy",
     "tqdm>=4.66",
-    # The Qwen3.6 multimodal processor (AutoProcessor) loads an image processor
-    # that needs pillow + torchvision, even though we only ever feed text.
+    # The Gemma 4 processor (used by train.py) loads image/video processors that
+    # need pillow + torchvision, even though we only ever feed text.
     "pillow>=10.0",
 ]
 
 [dependency-groups]
-# Installed by default with `uv sync` / `uv run`. Enables `uv run pyright`
-# (pyrightconfig.json points at .venv).
-dev = ["pyright>=1.1.390"]
+# Installed by default with `uv sync` / `uv run`.
+dev = ["pyright>=1.1.390", "ruff>=0.8"]
 
 [project.optional-dependencies]
 # PyTorch backend — pick exactly one:
@@ -32,6 +31,12 @@ dev = ["pyright>=1.1.390"]
 cpu  = ["torch>=2.7", "torchvision"]
 cuda = ["torch>=2.7", "torchvision"]
 rocm = ["torch>=2.7", "torchvision", "triton-rocm"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
 
 [tool.uv]
 package = false

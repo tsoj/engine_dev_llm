@@ -1,15 +1,17 @@
-ext/
-fine_tuned_model/
-results/
+# Data, runs and model outputs
 data/
-nohup.out
-fine_tuned_model_old/
-fine_tuned_model_2024-10-1-1822/
-fully_merged_model/
+runs/
 engine_dev_model_*
-fine_tuned_lora_model/
-engine_dev_llm_weights_and_data.7z
-__pycache__
+
+# Old outputs from before runs/ existed
+results/
 checkpoints/
+
+# Python / tooling
+.venv/
+__pycache__/
+.ruff_cache/
+.ropeproject/
+
+nohup.out
 TODO.md
-train_on_runpod_XXX.sh

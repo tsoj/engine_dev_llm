@@ -1,278 +1,207 @@
-"""Convert DiscordChatExporter JSON exports into a ChatML-formatted dataset.
+"""Build a tokenized training dataset from DiscordChatExporter JSON exports.
 
-Each Discord message becomes one ChatML block::
+    uv run python data.py --json_dirs data/discord_json_data --output_dir data/dataset
 
-    <|im_start|>{author}[ replies to {other}]
-    {content}<|im_end|>
+Each channel is converted to the format in chat_format.py and cut into chunks of
+at most --max_length tokens on message boundaries. The last --eval_fraction of
+each channel's chunks (i.e. its most recent messages) is held out for
+evaluation, so eval chunks are never interleaved with training chunks.
 
-Messages from a channel are concatenated and split into chunks that fit within
-``constants.max_token_context_length`` tokens (measured with the model's real
-tokenizer, split on message boundaries). Every chunk is prefixed with a small
-system header naming the channel, and written as one row of a JSONL file with a
-single ``text`` field — exactly what TRL's SFTTrainer consumes for
-language-modeling (full-sequence-loss) training.
+The output is a Hugging Face DatasetDict with "train" and "eval" splits holding
+pre-tokenized "input_ids", plus a meta.json that train.py uses to verify the
+dataset matches the model it is about to train.
 """
 
+import fnmatch
 import json
-from dataclasses import dataclass, field
-from dataclasses_json import dataclass_json, cfg
+from collections.abc import Iterator
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import List, Optional
 from pathlib import Path
+from typing import Literal
 
+import numpy as np
+from datasets import Dataset, DatasetDict
 from tqdm import tqdm
-from transformers import AutoProcessor
+from transformers import HfArgumentParser
 
-import constants
+import model_spec
+from chat_format import ChatFormat, Message
 
-cfg.global_config.encoders[datetime] = datetime.isoformat
-cfg.global_config.decoders[datetime] = datetime.fromisoformat
+DATASET_FORMAT_VERSION = 1
+
+# DiscordChatExporter message types that are actual chat messages. Everything
+# else (joins, pins, poll results, slash command responses, ...) is skipped.
+CHAT_MESSAGE_TYPES = {"Default", "Reply"}
+
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".mkv"}
+AUDIO_EXTENSIONS = {".mp3", ".ogg", ".wav", ".m4a", ".flac"}
 
 
-@dataclass_json
 @dataclass
-class Guild:
-    id: str
-    name: str
-    iconUrl: str
-
-@dataclass_json
-@dataclass
-class Channel:
-    id: str
-    type: str
-    categoryId: Optional[str]
-    category: Optional[str]
-    name: str
-    topic: Optional[str]
-
-@dataclass_json
-@dataclass
-class DataRange:
-    after: Optional[datetime]
-    before: Optional[datetime]
-
-@dataclass_json
-@dataclass
-class Attachment:
-    id: str
-    url: str
-    fileName: str
-    fileSizeBytes: int
-
-@dataclass_json
-@dataclass
-class Image:
-    url: str
-    width: int
-    height: int
-
-@dataclass_json
-@dataclass
-class Field:
-    name: str
-    value: str
-    isInline: bool
-
-@dataclass_json
-@dataclass
-class Embed:
-    title: str
-    url: Optional[str]
-    timestamp: Optional[datetime]
-    description: str
-    images: List[Image]
-    fields: List[Field]
-    thumbnail: Optional[Image] = field(default=None)
-
-@dataclass_json
-@dataclass
-class Sticker:
-    id: str
-    name: str
-    format: str
-    sourceUrl: str
-
-@dataclass_json
-@dataclass
-class Emoji:
-    id: str
-    name: str
-    code: str
-    isAnimated: bool
-    imageUrl: str
-
-@dataclass_json
-@dataclass
-class Role:
-    id: str
-    name: str
-    color: Optional[str]
-    position: int
-
-@dataclass_json
-@dataclass
-class User:
-    id: str
-    name: str
-    discriminator: str
-    nickname: str
-    isBot: bool
-    avatarUrl: str
-    color: Optional[str] = field(default=None)
-    roles: Optional[List[Role]] = field(default=None)
-
-@dataclass_json
-@dataclass
-class Reaction:
-    emoji: Emoji
-    count: int
-    users: List[User]
-
-@dataclass_json
-@dataclass
-class Reference:
-    messageId: Optional[str]
-    channelId: str
-    guildId: Optional[str]
-
-@dataclass_json
-@dataclass
-class Message:
-    id: str
-    type: str
-    timestamp: datetime
-    timestampEdited: Optional[datetime]
-    callEndedTimestamp: Optional[datetime]
-    isPinned: bool
-    content: str
-    author: User
-    attachments: List[Attachment]
-    embeds: List[Embed]
-    stickers: List[Sticker]
-    reactions: List[Reaction]
-    mentions: List[User]
-    reference: Optional[Reference] = field(default=None)
-
-@dataclass_json
-@dataclass
-class Chat:
-    guild: Guild
-    channel: Channel
-    dateRange: DataRange
-    exportedAt: datetime
-    messages: List[Message]
-    messageCount: int
+class DataConfig:
+    json_dirs: list[str] = field(
+        default_factory=lambda: ["data/discord_json_data"],
+        metadata={"help": "Directories containing DiscordChatExporter *.json exports."},
+    )
+    output_dir: str = "data/dataset"
+    model_name: str = model_spec.DEFAULT_MODEL_NAME
+    max_length: int = field(default=4096, metadata={"help": "Tokens per training chunk."})
+    eval_fraction: float = field(default=0.02, metadata={"help": "Most recent fraction of each channel held out."})
+    exclude_channels: list[str] = field(
+        default_factory=lambda: [
+            "*counting*",
+            "*memes*",
+            "*music*",
+            "*song-of-the-day*",
+            "*bots*",
+            "*rules*",
+            "*welcome*",
+            "*announcements*",
+            "*stream-schedule*",
+        ],
+        metadata={"help": 'Case-insensitive glob patterns matched against "Guild - channel".'},
+    )
+    speaker_name: Literal["nickname", "username"] = field(
+        default="nickname",
+        metadata={"help": "Server nickname matches how @mentions appear in message content."},
+    )
+    include_bots: bool = False
+    attachment_placeholders: bool = field(
+        default=True, metadata={"help": 'Represent attachments/stickers as e.g. "[image]" instead of dropping them.'}
+    )
 
 
-def sanitize(content: str) -> str:
-    """Strip literal ChatML delimiters out of user content so they can't be
-    confused with structural tokens during training."""
-    return content.replace(constants.IM_START, "").replace(constants.IM_END, "").strip()
+def attachment_placeholder(file_name: str) -> str:
+    extension = Path(file_name).suffix.lower()
+    if extension in IMAGE_EXTENSIONS:
+        return "[image]"
+    if extension in VIDEO_EXTENSIONS:
+        return "[video]"
+    if extension in AUDIO_EXTENSIONS:
+        return "[audio]"
+    return "[file]"
 
 
-def message_role(message: Message, previous: Optional[Message]) -> str:
-    role = message.author.name
-    if previous is not None:
-        role += f" replies to {previous.author.name}"
-    return role
+def load_channel(path: Path, cfg: DataConfig) -> tuple[str, list[Message]]:
+    """Read one export. Only the few fields we need are accessed, so changes to
+    unrelated parts of the DiscordChatExporter format don't break this."""
+    with open(path, encoding="utf-8") as f:
+        export = json.load(f)
+    channel = f"{export['guild']['name']} - {export['channel']['name']}"
 
+    def speaker(author: dict) -> str:
+        if cfg.speaker_name == "nickname":
+            return author.get("nickname") or author["name"]
+        return author["name"]
 
-def format_block(role: str, content: str) -> str:
-    return f"{constants.IM_START}{role}\n{content}{constants.IM_END}\n"
-
-
-def format_message(message: Message, previous: Optional[Message]) -> str:
-    return format_block(message_role(message, previous), sanitize(message.content))
-
-
-def system_header(chat: Chat) -> str:
-    channel = f"{chat.guild.name} - {chat.channel.name}"
-    return f"{constants.IM_START}system\nChannel: {channel}{constants.IM_END}\n"
-
-
-def chunk_channel(chat: Chat, tokenizer, max_tokens: int):
-    """Yield ChatML text chunks for one channel, each <= max_tokens tokens."""
-    header = system_header(chat)
-    header_len = len(tokenizer.encode(header))
-    budget = max_tokens - header_len
-
-    id_to_message = {}
-    buffer: List[str] = []
-    buffer_len = 0
-
-    def flush():
-        nonlocal buffer, buffer_len
-        if buffer:
-            yield_text = header + "".join(buffer)
-            buffer = []
-            buffer_len = 0
-            return yield_text
-        return None
-
-    for message in chat.messages:
-        id_to_message[message.id] = message
-        previous = None
-        if (
-            message.type == "Reply"
-            and message.reference is not None
-            and message.reference.messageId in id_to_message
-        ):
-            previous = id_to_message[message.reference.messageId]
-
-        if not sanitize(message.content):
+    speakers_by_id: dict[str, str] = {}
+    messages = []
+    for message in export["messages"]:
+        if message["type"] not in CHAT_MESSAGE_TYPES:
+            continue
+        if message["author"].get("isBot") and not cfg.include_bots:
             continue
 
-        block = format_message(message, previous)
-        block_len = len(tokenizer.encode(block))
+        content = message["content"].strip()
+        if cfg.attachment_placeholders:
+            extras = [attachment_placeholder(a["fileName"]) for a in message.get("attachments", [])]
+            extras += [f"[sticker: {s['name']}]" for s in message.get("stickers", [])]
+            content = "\n".join(part for part in [content, " ".join(extras)] if part)
+        if not content:
+            continue
 
-        # A single oversized message: truncate only its content, keeping the
-        # role prefix and closing <|im_end|> intact so delimiters stay valid.
-        if block_len > budget:
-            role = message_role(message, previous)
-            empty_len = len(tokenizer.encode(format_block(role, "")))
-            if empty_len >= budget:
-                continue  # role line alone doesn't fit; drop the message
-            content_ids = tokenizer.encode(sanitize(message.content))[: budget - empty_len]
-            content = tokenizer.decode(content_ids, skip_special_tokens=True)
-            block = format_block(role, content)
-            block_len = len(tokenizer.encode(block))
+        author = speaker(message["author"])
+        speakers_by_id[message["id"]] = author
+        reference = message.get("reference") or {}
+        reply_to = speakers_by_id.get(reference.get("messageId")) if message["type"] == "Reply" else None
+        messages.append(Message(author=author, content=content, reply_to=reply_to))
 
-        if buffer_len + block_len > budget:
-            text = flush()
-            if text is not None:
-                yield text
+    return channel, messages
 
-        buffer.append(block)
-        buffer_len += block_len
 
-    text = flush()
-    if text is not None:
-        yield text
+def chunk_channel(
+    chat_format: ChatFormat, channel: str, messages: list[Message], max_length: int
+) -> Iterator[list[int]]:
+    """Yield token chunks of at most max_length, each starting with the channel header."""
+    header = chat_format.header_ids(channel)
+    budget = max_length - len(header)
+    buffer: list[int] = []
+    for message in messages:
+        ids = chat_format.message_ids(message, max_tokens=budget)
+        if ids is None:
+            continue
+        if buffer and len(buffer) + len(ids) > budget:
+            yield header + buffer
+            buffer = []
+        buffer.extend(ids)
+    if buffer:
+        yield header + buffer
+
+
+def is_excluded(channel: str, patterns: list[str]) -> bool:
+    return any(fnmatch.fnmatch(channel.lower(), pattern.lower()) for pattern in patterns)
 
 
 def main():
-    tokenizer = AutoProcessor.from_pretrained(constants.model_name, token=constants.hf_token).tokenizer
+    (cfg,) = HfArgumentParser(DataConfig).parse_args_into_dataclasses()
+    output_dir = Path(cfg.output_dir)
+    if output_dir.exists():
+        raise FileExistsError(f"{output_dir} already exists; delete it or pick another --output_dir.")
 
-    in_path = Path(constants.discord_json_dir)
-    out_path = Path(constants.dataset_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    files = sorted(p for d in cfg.json_dirs for p in Path(d).glob("*.json"))
+    if not files:
+        raise FileNotFoundError(f"No *.json exports found in {cfg.json_dirs}.")
 
-    n_chunks = 0
-    with open(out_path, "w") as out_file:
-        for file_path in sorted(in_path.glob("*.json")):
-            print("Loading from", file_path)
-            with open(file_path) as f:
-                chat = Chat.from_json(f.read())
+    tokenizer = model_spec.load_tokenizer(cfg.model_name)
+    chat_format = ChatFormat(tokenizer)
 
-            for text in tqdm(
-                chunk_channel(chat, tokenizer, constants.max_token_context_length),
-                desc=f"{chat.guild.name} - {chat.channel.name}",
-            ):
-                out_file.write(json.dumps({"text": text}) + "\n")
-                n_chunks += 1
+    splits: dict[str, dict[str, list]] = {
+        "train": {"input_ids": [], "channel": []},
+        "eval": {"input_ids": [], "channel": []},
+    }
+    excluded = []
+    for path in tqdm(files, desc="Channels"):
+        channel, messages = load_channel(path, cfg)
+        if is_excluded(channel, cfg.exclude_channels):
+            excluded.append(channel)
+            continue
+        chunks = [np.array(c, dtype=np.int32) for c in chunk_channel(chat_format, channel, messages, cfg.max_length)]
+        n_eval = round(len(chunks) * cfg.eval_fraction)
+        for split, split_chunks in [
+            ("train", chunks[: len(chunks) - n_eval]),
+            ("eval", chunks[len(chunks) - n_eval :]),
+        ]:
+            splits[split]["input_ids"].extend(split_chunks)
+            splits[split]["channel"].extend([channel] * len(split_chunks))
 
-    print(f"Wrote {n_chunks} chunks to {out_path}")
+    if excluded:
+        print(f"Excluded {len(excluded)} channels: {', '.join(excluded)}")
+    if not splits["eval"]["input_ids"]:
+        print("Warning: the eval split is empty (too little data for --eval_fraction).")
+
+    dataset = DatasetDict({split: Dataset.from_dict(columns) for split, columns in splits.items()})
+    dataset.save_to_disk(output_dir)
+
+    token_counts = {split: int(sum(len(ids) for ids in columns["input_ids"])) for split, columns in splits.items()}
+    meta = {
+        "format_version": DATASET_FORMAT_VERSION,
+        "created": datetime.now().isoformat(timespec="seconds"),
+        "tokenizer_fingerprint": model_spec.tokenizer_fingerprint(tokenizer),
+        "chunks": {split: len(columns["input_ids"]) for split, columns in splits.items()},
+        "tokens": token_counts,
+        "channels": sorted(set(splits["train"]["channel"]) | set(splits["eval"]["channel"])),
+        **asdict(cfg),
+    }
+    (output_dir / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+
+    for split in splits:
+        print(f"{split}: {meta['chunks'][split]} chunks, {token_counts[split]:,} tokens")
+    if splits["train"]["input_ids"]:
+        print("\nStart of the first training chunk:\n")
+        print(chat_format.decode(splits["train"]["input_ids"][0][:300].tolist()))
+    print(f"\nSaved to {output_dir}")
 
 
 if __name__ == "__main__":
