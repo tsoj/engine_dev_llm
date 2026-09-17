@@ -17,6 +17,8 @@ dependencies = [
     # The Gemma 4 processor (used by train.py) loads image/video processors that
     # need pillow + torchvision, even though we only ever feed text.
     "pillow>=10.0",
+    # evaluate.py plots the loss curves.
+    "matplotlib>=3.8",
 ]
 
 [dependency-groups]

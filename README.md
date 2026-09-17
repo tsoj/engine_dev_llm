@@ -69,18 +69,39 @@ memory with a short `--max_steps 20` run first):
 See `./run.sh train.py --help` for all options (LoRA rank, learning rate,
 epochs, ...).
 
-## 3. Compare checkpoints
+## 3. Validate on chat the model has never seen
+
+The most honest check is chat written *after* the training export: unlike a
+random split it can't share a conversation with the training data. Export the
+newer messages, build an eval-only dataset from them (`--eval_fraction 1` puts
+every chunk in the eval split), and score the base model and every checkpoint on
+it:
+
+```bash
+./run.sh data.py --json_dirs data/newer_json_data --output_dir data/newer --eval_fraction 1
+./run.sh evaluate.py --run_dir runs/first-try --dataset_dir data/newer
+```
+
+This writes `runs/first-try/eval_eval_<time>.md` (a table with loss, perplexity,
+next-token accuracy and a per-channel breakdown), a `.json` with all numbers, and
+a `.png` plotting the validation loss over the training loss curve. Use it to
+see whether the later epochs still help or only overfit.
+
+## 4. Compare checkpoints
 
 Loss alone doesn't tell you whether the output reads like the real channel.
 `sample.py` continues a few held-out conversations with the base model and every
 checkpoint of a run, using the same random seed, and writes them side by side to
-a Markdown file:
+a Markdown file, next to the real continuation from the dataset:
 
 ```bash
 ./run.sh sample.py --run_dir runs/first-try
+
+# prompts from newer chat instead of the run's own eval split
+./run.sh sample.py --run_dir runs/first-try --dataset_dir data/newer --include_base false
 ```
 
-## 4. Generate
+## 5. Generate
 
 ```bash
 # the model writes 30 messages

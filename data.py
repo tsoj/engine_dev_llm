@@ -52,7 +52,8 @@ class DataConfig:
         metadata={"help": "Tokens per training chunk (dozens of chat messages); also the context at generation."},
     )
     eval_fraction: float = field(
-        default=0.02, metadata={"help": "Most recent fraction of each channel held out. 0 = train on everything."}
+        default=0.02,
+        metadata={"help": "Most recent fraction of each channel held out. 0 = train on everything, 1 = eval only."},
     )
     exclude_channels: list[str] = field(
         default_factory=lambda: [
