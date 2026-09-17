@@ -84,10 +84,13 @@ def check_dataset_tokenizer(meta: dict, tokenizer) -> None:
         )
 
 
-def check_loss_parity(trainer: SFTTrainer, sample_ids: list[int], tolerance: float = 1e-3) -> None:
+def check_loss_parity(trainer: SFTTrainer, sample_ids: list[int], tolerance: float = 0.01) -> None:
     """TRL may patch the model's forward to compute the loss itself (e.g. loss_type="chunked_nll"),
     re-implementing model details such as Gemma's final logit softcapping. Verify that the loss it
-    optimizes equals the loss computed from the model's own logits."""
+    optimizes equals the loss computed from the model's own logits.
+
+    Measured on Gemma 4 12B (4-bit, ~2k tokens): bf16 noise between the two is <= 0.12% (0.04% on
+    full-length chunks), while dropping the softcapping changes the loss by 17-60%."""
     model = trainer.model
     was_training = model.training
     model.eval()  # disable LoRA dropout
@@ -96,8 +99,10 @@ def check_loss_parity(trainer: SFTTrainer, sample_ids: list[int], tolerance: flo
         trainer_loss = model(input_ids=input_ids, labels=input_ids).loss.float()
         logits = model(input_ids=input_ids).logits.float()
         reference_loss = torch.nn.functional.cross_entropy(logits[0, :-1], input_ids[0, 1:])
+    del logits
+    torch.cuda.empty_cache()  # the full logits are large; don't leave the memory fragmented for training
     model.train(was_training)
-    if not torch.isclose(trainer_loss, reference_loss, rtol=tolerance, atol=tolerance):
+    if not torch.isclose(trainer_loss, reference_loss, rtol=tolerance, atol=0.0):
         raise RuntimeError(
             f"Training loss {trainer_loss.item():.5f} != reference loss {reference_loss.item():.5f}. The trainer's "
             'loss computation doesn\'t match the model (e.g. missing logit softcapping); try loss_type="nll".'
@@ -207,8 +212,10 @@ def main():
         processing_class=processor,
     )
     trainer.model.print_trainable_parameters()
-    parity_sample = (eval_dataset if eval_dataset is not None else dataset["train"])[0]["input_ids"]
-    check_loss_parity(trainer, parity_sample[:2048])  # full logits of longer inputs cost a lot
+    # A long chunk (short ones give noisy averages), capped because full logits of longer inputs cost a lot.
+    parity_split = eval_dataset if eval_dataset is not None else dataset["train"]
+    candidates = parity_split.select(range(min(16, len(parity_split))))["input_ids"]
+    check_loss_parity(trainer, max(candidates, key=len)[:2048])
 
     steps_per_epoch = math.ceil(
         len(dataset["train"]) / (cfg.per_device_train_batch_size * cfg.gradient_accumulation_steps)
