@@ -1,16 +1,17 @@
 """Simulate a channel with a trained model.
 
     # let the model write 30 messages
-    uv run python generate.py --model runs/my-run/adapter --channel "Stockfish - engines-dev"
+    ./run.sh generate.py --model runs/my-run/adapter --channel "Stockfish - engines-dev"
 
     # take part in the conversation
-    uv run python generate.py --model runs/my-run/adapter --channel "Stockfish - engines-dev" --interactive
+    ./run.sh generate.py --model runs/my-run/adapter --channel "Stockfish - engines-dev" --interactive
 
 --model can be a LoRA adapter (runs/*/adapter or runs/*/checkpoints/checkpoint-*),
 a merged model (runs/*/merged), or a base model name. By default the weights are
 loaded in 4-bit, which needs roughly 10 GB of VRAM for Gemma 4 12B.
 """
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,8 +30,10 @@ class SamplingConfig:
     temperature: float = 1.0
     top_p: float = 0.95
     top_k: int = 64
-    max_new_tokens: int = field(default=512, metadata={"help": "Upper bound on the length of one message."})
-    context_tokens: int = field(default=4096, metadata={"help": "Use the training max_length."})
+    max_new_tokens: int = field(default=256, metadata={"help": "Upper bound on the length of one message."})
+    context_tokens: int | None = field(
+        default=None, metadata={"help": "Defaults to the max_length the model was trained with."}
+    )
 
 
 @dataclass
@@ -43,6 +46,36 @@ class GenerateConfig:
         default=None, metadata={"help": 'Defaults to "4bit" on GPU and "none" on CPU.'}
     )
     seed: int | None = None
+
+
+def trained_context_tokens(model_path: str | Path) -> int | None:
+    """The dataset max_length a run was trained with, found via the train_config_*.json that train.py
+    writes into the run directory (model_path is runs/<run>/adapter or runs/<run>/checkpoints/checkpoint-*)."""
+    path = Path(model_path)
+    for directory in [path, path.parent, path.parent.parent]:
+        configs = sorted(directory.glob("train_config_*.json"))
+        if configs:
+            return json.loads(configs[-1].read_text())["dataset"]["max_length"]
+    return None
+
+
+def resolve_context_tokens(sampling: SamplingConfig, trained: int | None) -> None:
+    if sampling.context_tokens is None:
+        if trained is None:
+            raise ValueError("Can't determine the training context length; pass --context_tokens.")
+        sampling.context_tokens = trained
+    elif trained is not None and sampling.context_tokens > trained:
+        print(f"Warning: --context_tokens {sampling.context_tokens} exceeds the training length {trained}.")
+
+
+def split_chunk(chat_format: ChatFormat, ids: list[int]) -> tuple[list[int], list[list[int]]]:
+    """Split a data.py chunk ([bos] + header turn + message turns) into header and turns."""
+    turn_start_id = chat_format.tokenizer.convert_tokens_to_ids(TURN_START)
+    starts = [i for i, token in enumerate(ids) if token == turn_start_id] + [len(ids)]
+    if ids[0] != chat_format.bos_id or starts[0] != 1:
+        raise ValueError("ids don't start with <bos> and the channel header.")
+    turns = [ids[a:b] for a, b in zip(starts[1:], starts[2:], strict=False)]
+    return ids[: starts[1]], turns
 
 
 def load_for_inference(path: str, quantization: model_spec.Quantization | None):
@@ -73,6 +106,8 @@ class Conversation:
         sampling: SamplingConfig,
         turns: list[list[int]] | None = None,
     ):
+        if sampling.context_tokens is None:
+            raise ValueError("sampling.context_tokens must be set (see resolve_context_tokens).")
         self.model = model
         self.chat_format = chat_format
         self.sampling = sampling
@@ -87,13 +122,8 @@ class Conversation:
 
     @classmethod
     def from_ids(cls, model, chat_format: ChatFormat, ids: list[int], sampling: SamplingConfig):
-        """Split a data.py chunk ([bos] + header turn + message turns) back into turns."""
-        turn_start_id = chat_format.tokenizer.convert_tokens_to_ids(TURN_START)
-        starts = [i for i, token in enumerate(ids) if token == turn_start_id] + [len(ids)]
-        if ids[0] != chat_format.bos_id or starts[0] != 1:
-            raise ValueError("ids don't start with <bos> and the channel header.")
-        turns = [ids[a:b] for a, b in zip(starts[1:], starts[2:], strict=False)]
-        return cls(model, chat_format, ids[: starts[1]], sampling, turns)
+        header, turns = split_chunk(chat_format, ids)
+        return cls(model, chat_format, header, sampling, turns)
 
     def add_message(self, author: str, content: str) -> None:
         ids = self.chat_format.message_ids(Message(author, content), max_tokens=self._limit // 2)
@@ -162,6 +192,11 @@ def main():
         set_seed(cfg.seed)
 
     print("Using GPU:", torch.cuda.get_device_name() if torch.cuda.is_available() else "none (CPU)")
+    trained = trained_context_tokens(cfg.model)
+    if trained is None and sampling.context_tokens is None:
+        sampling.context_tokens = 1024
+        print("Not a runs/ directory, using --context_tokens 1024.")
+    resolve_context_tokens(sampling, trained)
     model, tokenizer = load_for_inference(cfg.model, cfg.quantization)
     chat_format = ChatFormat(tokenizer)
     conversation = Conversation(model, chat_format, chat_format.header_ids(cfg.channel), sampling)

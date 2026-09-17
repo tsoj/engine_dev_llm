@@ -24,7 +24,7 @@ dependencies = [
 dev = ["pyright>=1.1.390", "ruff>=0.8"]
 
 [project.optional-dependencies]
-# PyTorch backend — pick exactly one:
+# PyTorch backend — pick exactly one (./run.sh detects it automatically):
 #   uv sync --extra cpu    → CPU (works everywhere)
 #   uv sync --extra cuda   → CUDA 13.0 (NVIDIA GPUs, e.g. the H100)
 #   uv sync --extra rocm   → ROCm 7.2  (AMD GPUs, Linux only)

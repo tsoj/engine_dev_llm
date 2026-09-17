@@ -1,6 +1,6 @@
 """Compare checkpoints (and the base model) by continuing held-out conversations.
 
-    uv run python sample.py --run_dir runs/my-run
+    ./run.sh sample.py --run_dir runs/my-run
 
 For a few eval chunks (the most recent messages of the largest channels), the
 first --prompt_tokens tokens are used as the prompt, and every model continues
@@ -9,6 +9,7 @@ about whether the output reads like the real channel; this lets you judge that
 side by side. The result is written as a Markdown file.
 """
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -20,7 +21,7 @@ from transformers import HfArgumentParser, set_seed
 
 import model_spec
 from chat_format import ChatFormat
-from generate import Conversation, SamplingConfig, load_for_inference
+from generate import Conversation, SamplingConfig, load_for_inference, resolve_context_tokens, split_chunk
 
 
 @dataclass
@@ -34,7 +35,7 @@ class SampleConfig:
     include_base: bool = True
     dataset_dir: str = "data/dataset"
     num_prompts: int = 3
-    prompt_tokens: int = 768
+    prompt_tokens: int = field(default=512, metadata={"help": "Should leave room for --messages."})
     messages: int = 12
     quantization: model_spec.Quantization | None = None
     seed: int = 0
@@ -67,11 +68,9 @@ def select_prompts(cfg: SampleConfig, chat_format: ChatFormat) -> list[list[int]
 
     prompts = []
     for channel in channels:
-        conversation = Conversation.from_ids(
-            None, chat_format, eval_split[first_chunk[channel]]["input_ids"], SamplingConfig()
-        )
-        ids, turns = list(conversation.header), 0
-        for turn in conversation.turns:
+        header, chunk_turns = split_chunk(chat_format, eval_split[first_chunk[channel]]["input_ids"])
+        ids, turns = list(header), 0
+        for turn in chunk_turns:
             if len(ids) + len(turn) > cfg.prompt_tokens and turns > 0:
                 break
             ids += turn
@@ -89,6 +88,8 @@ def main():
         raise RuntimeError(f"Adapters were trained on different base models: {base_names}")
     base_name = base_names.pop() if base_names else model_spec.DEFAULT_MODEL_NAME
 
+    dataset_meta = json.loads((Path(cfg.dataset_dir) / "meta.json").read_text())
+    resolve_context_tokens(sampling, dataset_meta["max_length"])
     tokenizer = model_spec.load_tokenizer(base_name)
     chat_format = ChatFormat(tokenizer)
     prompts = select_prompts(cfg, chat_format)

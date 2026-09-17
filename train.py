@@ -1,7 +1,7 @@
 """LoRA / QLoRA fine-tuning on the dataset built by data.py.
 
-    uv run python train.py --run_name my-run
-    uv run python train.py --run_name my-run --resume   # continue from the latest checkpoint
+    ./run.sh train.py --run_name my-run
+    ./run.sh train.py --run_name my-run --resume   # continue from the latest checkpoint
 
 Everything for a run lives in runs/<run_name>/: checkpoints, the final adapter,
 and (with --merge) a standalone merged model. Defaults target a ~40 GB GPU with
@@ -41,16 +41,18 @@ class TrainConfig:
     learning_rate: float = 1e-4
     num_train_epochs: float = 1.0
     max_steps: int = field(default=-1, metadata={"help": "Overrides num_train_epochs if > 0."})
+    # One chunk per optimizer step: with momentum, frequent small updates work well, and it needs
+    # the least memory. Raise either of the first two for smoother (but fewer) updates.
     per_device_train_batch_size: int = 1
-    gradient_accumulation_steps: int = 32
+    gradient_accumulation_steps: int = 1
     per_device_eval_batch_size: int = 1
-    max_eval_chunks: int = field(default=200, metadata={"help": "Random subset of the eval split used for eval loss."})
+    max_eval_chunks: int = field(default=100, metadata={"help": "Random subset of the eval split used for eval loss."})
     # Values < 1 are fractions of the total number of optimizer steps, so every run
     # gets ~20 evals and ~10 checkpoints regardless of dataset size.
     eval_steps: float = 0.05
     save_steps: float = 0.1
     save_total_limit: int | None = None
-    logging_steps: int = 5
+    logging_steps: int = 1
     seed: int = 42
 
     merge: bool = field(default=False, metadata={"help": "Also save a merged bf16 model (needs ~24 GB CPU RAM)."})
@@ -64,7 +66,9 @@ def latest_checkpoint(checkpoint_dir: Path) -> Path | None:
 def read_dataset_meta(dataset_dir: Path) -> dict:
     meta_path = dataset_dir / "meta.json"
     if not meta_path.exists():
-        raise FileNotFoundError(f"{meta_path} not found. Build the dataset with data.py first.")
+        found = sorted(str(p.parent) for p in Path("data").glob("*/meta.json"))
+        hint = f" Datasets found: {', '.join(found)} (pass one with --dataset_dir)." if found else ""
+        raise FileNotFoundError(f"{meta_path} not found. Build the dataset with data.py first.{hint}")
     meta = json.loads(meta_path.read_text())
     if meta.get("format_version") != DATASET_FORMAT_VERSION:
         raise RuntimeError(
@@ -200,7 +204,7 @@ def main():
         processing_class=processor,
     )
     trainer.model.print_trainable_parameters()
-    check_loss_parity(trainer, eval_dataset[0]["input_ids"][:512])
+    check_loss_parity(trainer, eval_dataset[0]["input_ids"][:2048])  # full logits of longer inputs cost a lot
 
     steps_per_epoch = math.ceil(
         len(dataset["train"]) / (cfg.per_device_train_batch_size * cfg.gradient_accumulation_steps)

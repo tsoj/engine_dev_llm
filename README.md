@@ -8,17 +8,24 @@ fine-tuned with LoRA/QLoRA on plain language modeling of the chat logs.
 
 # Setup
 
-Dependencies are managed with [uv](https://docs.astral.sh/uv/). Pick the extra
-matching your hardware (exactly one):
+Dependencies are managed with [uv](https://docs.astral.sh/uv/). PyTorch comes in
+separate builds per backend, selected with a uv extra (`cuda`, `rocm` or `cpu`).
+Run everything through the `./run.sh` wrapper, which detects the backend of the
+machine (NVIDIA → `cuda`, AMD ROCm → `rocm`, otherwise `cpu`) and passes the
+matching extra to `uv run`:
 
 ```bash
-uv sync --extra cuda   # NVIDIA (CUDA 13.0)
-uv sync --extra rocm   # AMD (ROCm 7.2, Linux only)
-uv sync --extra cpu    # CPU only (smoke tests)
+./run.sh train.py --help          # = uv run --extra <backend> python train.py --help
+./run.sh ruff check .             # other commands work too
+TORCH_BACKEND=cpu ./run.sh ...    # override the detection
 ```
 
+The first call installs the environment. Avoid plain `uv run` / `uv sync`
+without `--extra`: they replace the GPU build of PyTorch with the default one
+from PyPI.
+
 Gemma models on Hugging Face may require accepting the license; if so, log in
-with `uv run hf auth login` or set `HF_TOKEN`.
+with `./run.sh hf auth login` or set `HF_TOKEN`.
 
 # Pipeline
 
@@ -27,12 +34,12 @@ with `uv run hf auth login` or set `HF_TOKEN`.
 Export chats as JSON (see [How to get the data](#how-to-get-the-data)), then:
 
 ```bash
-uv run python data.py --json_dirs data/discord_json_data --output_dir data/dataset
+./run.sh data.py --json_dirs data/discord_json_data --output_dir data/dataset
 ```
 
 - Several export directories can be combined: `--json_dirs dir1 dir2`.
 - Noisy channels are skipped with `--exclude_channels` (glob patterns on
-  `"Guild - channel"`; see `uv run python data.py --help` for the defaults).
+  `"Guild - channel"`; see `./run.sh data.py --help` for the defaults).
 - Bot messages, joins, pins etc. are dropped; attachments become `[image]`,
   `[file]`, ... placeholders.
 - The most recent 2% of every channel is held out as the eval split.
@@ -41,24 +48,25 @@ uv run python data.py --json_dirs data/discord_json_data --output_dir data/datas
 ## 2. Train
 
 ```bash
-uv run python train.py --run_name first-try
-uv run python train.py --run_name first-try --resume  # continue after an interruption
+./run.sh train.py --run_name first-try
+./run.sh train.py --run_name first-try --resume  # continue after an interruption
 ```
 
 Everything for a run goes to `runs/<run_name>/`: `checkpoints/`, the final
 `adapter/`, and with `--merge` a standalone `merged/` model. The eval loss at
 step 0 is the base model's, as a baseline.
 
-Suggested settings per GPU (these are estimates; check peak memory with a short
-`--max_steps 20` run first):
+Defaults: chunks of 2048 tokens (dozens of chat messages of context), one chunk
+per optimizer step, QLoRA. Suggested settings per GPU (estimates; check peak
+memory with a short `--max_steps 20` run first):
 
 | GPU memory | Flags |
 | --- | --- |
-| 80 GB | `--quantization none --per_device_train_batch_size 4 --gradient_accumulation_steps 8` |
-| 40–48 GB | defaults (QLoRA, batch size 1, gradient accumulation 32) or `--per_device_train_batch_size 2 --gradient_accumulation_steps 16` |
-| 20–24 GB | defaults, possibly with a dataset built with `--max_length 2048` |
+| 80 GB | `--quantization none` (bf16 LoRA, faster than 4-bit) |
+| 24–48 GB | defaults |
+| 20 GB | defaults, or a dataset built with `--max_length 1024` if memory runs out |
 
-See `uv run python train.py --help` for all options (LoRA rank, learning rate,
+See `./run.sh train.py --help` for all options (LoRA rank, learning rate,
 epochs, ...).
 
 ## 3. Compare checkpoints
@@ -69,17 +77,17 @@ checkpoint of a run, using the same random seed, and writes them side by side to
 a Markdown file:
 
 ```bash
-uv run python sample.py --run_dir runs/first-try
+./run.sh sample.py --run_dir runs/first-try
 ```
 
 ## 4. Generate
 
 ```bash
 # the model writes 30 messages
-uv run python generate.py --model runs/first-try/adapter --channel "Stockfish - engines-dev"
+./run.sh generate.py --model runs/first-try/adapter --channel "Stockfish - engines-dev"
 
 # join the conversation
-uv run python generate.py --model runs/first-try/adapter --channel "Stockfish - engines-dev" --interactive
+./run.sh generate.py --model runs/first-try/adapter --channel "Stockfish - engines-dev" --interactive
 ```
 
 In interactive mode, enter a blank line to let the model pick the next speaker,
@@ -87,7 +95,8 @@ In interactive mode, enter a blank line to let the model pick the next speaker,
 yourself.
 
 `--model` accepts an adapter, a checkpoint (`runs/*/checkpoints/checkpoint-*`) or
-a merged model. Weights are loaded in 4-bit by default, which needs roughly
+a merged model. The context window defaults to the length the run was trained
+with. Weights are loaded in 4-bit by default, which needs roughly
 10 GB of VRAM (an estimate). Use `--quantization 8bit` or `none` if you have
 more memory.
 

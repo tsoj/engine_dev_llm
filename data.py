@@ -1,6 +1,6 @@
 """Build a tokenized training dataset from DiscordChatExporter JSON exports.
 
-    uv run python data.py --json_dirs data/discord_json_data --output_dir data/dataset
+    ./run.sh data.py --json_dirs data/discord_json_data --output_dir data/dataset
 
 Each channel is converted to the format in chat_format.py and cut into chunks of
 at most --max_length tokens on message boundaries. The last --eval_fraction of
@@ -47,7 +47,10 @@ class DataConfig:
     )
     output_dir: str = "data/dataset"
     model_name: str = model_spec.DEFAULT_MODEL_NAME
-    max_length: int = field(default=4096, metadata={"help": "Tokens per training chunk."})
+    max_length: int = field(
+        default=2048,
+        metadata={"help": "Tokens per training chunk (dozens of chat messages); also the context at generation."},
+    )
     eval_fraction: float = field(default=0.02, metadata={"help": "Most recent fraction of each channel held out."})
     exclude_channels: list[str] = field(
         default_factory=lambda: [
