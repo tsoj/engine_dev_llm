@@ -2,11 +2,12 @@
 
     ./run.sh sample.py --run_dir runs/my-run
 
-For a few eval chunks (the most recent messages of the largest channels), the
-first --prompt_tokens tokens are used as the prompt, and every model continues
-them for --messages messages with the same random seed. Loss alone says little
-about whether the output reads like the real channel; this lets you judge that
-side by side. The result is written as a Markdown file.
+For --num_prompts eval chunks spread evenly over the held-out split, the first
+--prompt_tokens tokens are used as the prompt, and every model continues them for
+--messages messages with the same random seed. The real continuation from the
+dataset is shown alongside. Loss alone says little about whether the output reads
+like the real channel; this lets you judge that side by side. The result is
+written as a Markdown file.
 """
 
 import json
@@ -34,7 +35,10 @@ class SampleConfig:
     )
     include_base: bool = True
     dataset_dir: str = "data/dataset"
-    num_prompts: int = 3
+    split: str = field(
+        default="eval", metadata={"help": 'Where prompts come from. "train" for datasets without held-out data.'}
+    )
+    num_prompts: int = 5
     prompt_tokens: int = field(default=512, metadata={"help": "Should leave room for --messages."})
     messages: int = 12
     quantization: model_spec.Quantization | None = None
@@ -56,26 +60,27 @@ def collect_adapters(cfg: SampleConfig) -> list[Path]:
     return adapters
 
 
-def select_prompts(cfg: SampleConfig, chat_format: ChatFormat) -> list[list[int]]:
-    """The first eval chunk of each of the largest channels, cut to whole turns."""
-    eval_split = load_from_disk(cfg.dataset_dir)["eval"]
-    channel_sizes: dict[str, int] = {}
-    first_chunk: dict[str, int] = {}
-    for i, channel in enumerate(eval_split["channel"]):
-        channel_sizes[channel] = channel_sizes.get(channel, 0) + 1
-        first_chunk.setdefault(channel, i)
-    channels = sorted(channel_sizes, key=channel_sizes.get, reverse=True)[: cfg.num_prompts]
+def select_prompts(cfg: SampleConfig, chat_format: ChatFormat) -> list[tuple[list[int], list[list[int]]]]:
+    """Eval chunks spread evenly over the eval split (which is ordered by channel, then time), each cut
+    into a prompt of whole turns and the real continuation (up to --messages turns)."""
+    dataset = load_from_disk(cfg.dataset_dir)
+    if cfg.split not in dataset:
+        raise ValueError(f'{cfg.dataset_dir} has no "{cfg.split}" split (it has {list(dataset)}); try --split train.')
+    eval_split = dataset[cfg.split]
+    n = len(eval_split)
+    count = min(cfg.num_prompts, n)
+    indices = sorted({round(i * (n - 1) / max(count - 1, 1)) for i in range(count)})
 
     prompts = []
-    for channel in channels:
-        header, chunk_turns = split_chunk(chat_format, eval_split[first_chunk[channel]]["input_ids"])
-        ids, turns = list(header), 0
+    for index in indices:
+        header, chunk_turns = split_chunk(chat_format, eval_split[index]["input_ids"])
+        ids, used = list(header), 0
         for turn in chunk_turns:
-            if len(ids) + len(turn) > cfg.prompt_tokens and turns > 0:
+            if len(ids) + len(turn) > cfg.prompt_tokens and used > 0:
                 break
             ids += turn
-            turns += 1
-        prompts.append(ids)
+            used += 1
+        prompts.append((ids, chunk_turns[used : used + cfg.messages]))
     return prompts
 
 
@@ -112,9 +117,10 @@ def main():
     )
     lines = [f"# Samples ({datetime.now():%Y-%m-%d %H:%M})", ""]
 
-    for p, prompt in enumerate(prompts):
+    for p, (prompt, real_turns) in enumerate(prompts):
         prompt_conversation = Conversation.from_ids(model, chat_format, prompt, sampling)
         lines += [f"## Prompt {p + 1}", "", "```", prompt_conversation.to_text([prompt]).strip(), "```", ""]
+        lines += ["### Real continuation", "", "```", prompt_conversation.to_text(real_turns).strip(), "```", ""]
         for label, adapter_name in variants:
             print(f"Prompt {p + 1}/{len(prompts)}: {label}")
             conversation = Conversation.from_ids(model, chat_format, prompt, sampling)

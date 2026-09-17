@@ -133,10 +133,13 @@ def main():
     processor = model_spec.load_processor(model_name)
     check_dataset_tokenizer(dataset_meta, processor.tokenizer)
     dataset = load_from_disk(cfg.dataset_dir)
-    eval_dataset = dataset["eval"].shuffle(seed=cfg.seed)
-    eval_dataset = eval_dataset.select(range(min(cfg.max_eval_chunks, len(eval_dataset))))
-    if len(eval_dataset) == 0:
-        raise RuntimeError("The dataset has no eval chunks; rebuild it with a larger --eval_fraction.")
+    has_eval = "eval" in dataset
+    eval_dataset = None
+    if has_eval:
+        eval_dataset = dataset["eval"].shuffle(seed=cfg.seed)
+        eval_dataset = eval_dataset.select(range(min(cfg.max_eval_chunks, len(eval_dataset))))
+    if not has_eval:
+        print("\033[1mThe dataset has no eval split: training without evaluation.\033[0m")
 
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / f"train_config_{datetime.now():%Y-%m-%d_%H-%M-%S}.json").write_text(
@@ -183,9 +186,9 @@ def main():
         # Gemma's 262k vocab would otherwise dominate activation memory.
         loss_type="chunked_nll",
         logging_steps=cfg.logging_steps,
-        eval_strategy="steps",
+        eval_strategy="steps" if has_eval else "no",
         eval_steps=cfg.eval_steps,
-        eval_on_start=resume_from is None,  # base model baseline (LoRA starts as a no-op)
+        eval_on_start=has_eval and resume_from is None,  # base model baseline (LoRA starts as a no-op)
         save_strategy="steps",
         save_steps=cfg.save_steps,
         save_total_limit=cfg.save_total_limit,
@@ -204,7 +207,8 @@ def main():
         processing_class=processor,
     )
     trainer.model.print_trainable_parameters()
-    check_loss_parity(trainer, eval_dataset[0]["input_ids"][:2048])  # full logits of longer inputs cost a lot
+    parity_sample = (eval_dataset if eval_dataset is not None else dataset["train"])[0]["input_ids"]
+    check_loss_parity(trainer, parity_sample[:2048])  # full logits of longer inputs cost a lot
 
     steps_per_epoch = math.ceil(
         len(dataset["train"]) / (cfg.per_device_train_batch_size * cfg.gradient_accumulation_steps)

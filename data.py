@@ -7,7 +7,7 @@ at most --max_length tokens on message boundaries. The last --eval_fraction of
 each channel's chunks (i.e. its most recent messages) is held out for
 evaluation, so eval chunks are never interleaved with training chunks.
 
-The output is a Hugging Face DatasetDict with "train" and "eval" splits holding
+The output is a Hugging Face DatasetDict with "train" and (unless empty) "eval" splits holding
 pre-tokenized "input_ids", plus a meta.json that train.py uses to verify the
 dataset matches the model it is about to train.
 """
@@ -51,7 +51,9 @@ class DataConfig:
         default=2048,
         metadata={"help": "Tokens per training chunk (dozens of chat messages); also the context at generation."},
     )
-    eval_fraction: float = field(default=0.02, metadata={"help": "Most recent fraction of each channel held out."})
+    eval_fraction: float = field(
+        default=0.02, metadata={"help": "Most recent fraction of each channel held out. 0 = train on everything."}
+    )
     exclude_channels: list[str] = field(
         default_factory=lambda: [
             "*counting*",
@@ -181,10 +183,13 @@ def main():
 
     if excluded:
         print(f"Excluded {len(excluded)} channels: {', '.join(excluded)}")
-    if not splits["eval"]["input_ids"]:
+    if cfg.eval_fraction > 0 and not splits["eval"]["input_ids"]:
         print("Warning: the eval split is empty (too little data for --eval_fraction).")
 
-    dataset = DatasetDict({split: Dataset.from_dict(columns) for split, columns in splits.items()})
+    # Empty splits are left out: `datasets` can't load an empty split back from disk.
+    dataset = DatasetDict(
+        {split: Dataset.from_dict(columns) for split, columns in splits.items() if columns["input_ids"]}
+    )
     dataset.save_to_disk(output_dir)
 
     token_counts = {split: int(sum(len(ids) for ids in columns["input_ids"])) for split, columns in splits.items()}
