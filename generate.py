@@ -1,10 +1,10 @@
 """Simulate a channel with a trained model.
 
     # let the model write 30 messages
-    ./run.sh generate.py --model runs/my-run/adapter --channel "Stockfish - engines-dev"
+    ./run.sh generate.py --model runs/my-run/adapter
 
-    # take part in the conversation
-    ./run.sh generate.py --model runs/my-run/adapter --channel "Stockfish - engines-dev" --interactive
+    # pick a channel and take part in the conversation
+    ./run.sh generate.py --model runs/my-run/adapter --channel "My Server - general" --interactive
 
 --model can be a LoRA adapter (runs/*/adapter or runs/*/checkpoints/checkpoint-*),
 a merged model (runs/*/merged), or a base model name. By default the weights are
@@ -39,7 +39,9 @@ class SamplingConfig:
 @dataclass
 class GenerateConfig:
     model: str = field(metadata={"help": "Adapter dir, merged model dir, or base model name."})
-    channel: str = "Stockfish - engines-dev"
+    channel: str | None = field(
+        default=None, metadata={"help": "Defaults to the first channel the run was trained on."}
+    )
     max_messages: int = 30
     interactive: bool = False
     quantization: model_spec.Quantization | None = field(
@@ -48,15 +50,21 @@ class GenerateConfig:
     seed: int | None = None
 
 
-def trained_context_tokens(model_path: str | Path) -> int | None:
-    """The dataset max_length a run was trained with, found via the train_config_*.json that train.py
-    writes into the run directory (model_path is runs/<run>/adapter or runs/<run>/checkpoints/checkpoint-*)."""
+def trained_dataset(model_path: str | Path) -> dict | None:
+    """The meta of the dataset a run was trained on (channels, max_length, ...), found via the
+    train_config_*.json that train.py writes into the run directory (model_path is
+    runs/<run>/adapter or runs/<run>/checkpoints/checkpoint-*)."""
     path = Path(model_path)
     for directory in [path, path.parent, path.parent.parent]:
         configs = sorted(directory.glob("train_config_*.json"))
         if configs:
-            return json.loads(configs[-1].read_text())["dataset"]["max_length"]
+            return json.loads(configs[-1].read_text())["dataset"]
     return None
+
+
+def trained_context_tokens(model_path: str | Path) -> int | None:
+    dataset = trained_dataset(model_path)
+    return dataset["max_length"] if dataset else None
 
 
 def resolve_context_tokens(sampling: SamplingConfig, trained: int | None) -> None:
@@ -192,17 +200,27 @@ def main():
         set_seed(cfg.seed)
 
     print("Using GPU:", torch.cuda.get_device_name() if torch.cuda.is_available() else "none (CPU)")
-    trained = trained_context_tokens(cfg.model)
-    if trained is None and sampling.context_tokens is None:
+    dataset_meta = trained_dataset(cfg.model)
+    if dataset_meta is None and sampling.context_tokens is None:
         sampling.context_tokens = 1024
         print("Not a runs/ directory, using --context_tokens 1024.")
-    resolve_context_tokens(sampling, trained)
+    resolve_context_tokens(sampling, dataset_meta["max_length"] if dataset_meta else None)
+
+    channels = (dataset_meta or {}).get("channels", [])
+    channel = cfg.channel or next(iter(channels), None)
+    if channel is None:
+        raise ValueError("Pass --channel: the run directory doesn't say which channels it was trained on.")
+    if channels and channel not in channels:
+        print(f"Warning: {channel!r} is not one of the {len(channels)} trained channels, e.g. {channels[:3]}.")
+    elif cfg.channel is None and channels:
+        print(f"Using the first of {len(channels)} trained channels; pass --channel to pick another.")
+
     model, tokenizer = load_for_inference(cfg.model, cfg.quantization)
     chat_format = ChatFormat(tokenizer)
-    conversation = Conversation(model, chat_format, chat_format.header_ids(cfg.channel), sampling)
+    conversation = Conversation(model, chat_format, chat_format.header_ids(channel), sampling)
     streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
-    print(f"\n# {cfg.channel}")
+    print(f"\n# {channel}")
     if cfg.interactive:
         print(
             "Enter: blank = model picks the next speaker, 'name' = model writes as name, "

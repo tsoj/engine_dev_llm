@@ -105,10 +105,10 @@ a Markdown file, next to the real continuation from the dataset:
 
 ```bash
 # the model writes 30 messages
-./run.sh generate.py --model runs/first-try/adapter --channel "Stockfish - engines-dev"
+./run.sh generate.py --model runs/first-try/adapter
 
-# join the conversation
-./run.sh generate.py --model runs/first-try/adapter --channel "Stockfish - engines-dev" --interactive
+# pick a channel and join the conversation
+./run.sh generate.py --model runs/first-try/adapter --channel "My Server - general" --interactive
 ```
 
 In interactive mode, enter a blank line to let the model pick the next speaker,
@@ -116,8 +116,10 @@ In interactive mode, enter a blank line to let the model pick the next speaker,
 yourself.
 
 `--model` accepts an adapter, a checkpoint (`runs/*/checkpoints/checkpoint-*`) or
-a merged model. The context window defaults to the length the run was trained
-with. Weights are loaded in 4-bit by default, which needs roughly
+a merged model. `--channel` defaults to the first channel of the run's training
+dataset; the full list is in that dataset's `meta.json` (and in the run's
+`train_config_*.json`). The context window defaults to the length the run was
+trained with. Weights are loaded in 4-bit by default, which needs roughly
 10 GB of VRAM (an estimate). Use `--quantization 8bit` or `none` if you have
 more memory.
 
@@ -134,7 +136,7 @@ only then update the expected values.
 
 Use [DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter). Be
 careful with your account; ideally use one that wouldn't matter much if it got
-compromised. Passing the token through an environment variable keeps it out of
+compromised or deleted. Passing the token through an environment variable keeps it out of
 your shell history:
 
 ```bash
@@ -153,80 +155,3 @@ export DISCORD_TOKEN="your.token"
 
 The exports must be JSON. For up-to-date details, see the DiscordChatExporter
 repository.
-
-<details>
-<summary>Channels of the engine-dev dataset</summary>
-
-```
-Chess Programming Wiki - 6-hours-slowmode
-Chess Programming Wiki - brainrot
-Chess Programming Wiki - chess-talk
-Chess Programming Wiki - engine-dev
-Chess Programming Wiki - enginetest
-Chess Programming Wiki - feedback
-Chess Programming Wiki - general
-Chess Programming Wiki - math
-Chess Programming Wiki - wiki-general
-Engine Programming - 1024challenge
-Engine Programming - 2048
-Engine Programming - 4kdotc
-Engine Programming - 4ku
-Engine Programming - ataxx
-Engine Programming - bitboards
-Engine Programming - bullet
-Engine Programming - chess
-Engine Programming - cutegames
-Engine Programming - deep-chess
-Engine Programming - dice-wars
-Engine Programming - events
-Engine Programming - feedback
-Engine Programming - general
-Engine Programming - go
-Engine Programming - honse
-Engine Programming - machine-learning
-Engine Programming - mnk
-Engine Programming - off-topic
-Engine Programming - pijersi
-Engine Programming - princhess
-Engine Programming - programming
-Engine Programming - pytteliten
-Engine Programming - releases
-Engine Programming - resources
-Engine Programming - reversi
-Engine Programming - style
-Engine Programming - tak
-Engine Programming - tetka
-Engine Programming - texel-tuner
-Engine Programming - uttt
-Leela Chess Zero - dev-log
-Leela Chess Zero - dev-public
-Leela Chess Zero - dev
-Leela Chess Zero - general
-Leela Chess Zero - off-topic
-Leela Chess Zero - publications-discuss
-Leela Chess Zero - test-discuss
-OpenBench - all-other-things
-OpenBench - chess-things
-OpenBench - off-topic
-OpenBench - openbench-instances
-OpenBench - openbench-support
-OpenBench - open-rank
-Stockfish - chessdbcn
-Stockfish - engine-releases
-Stockfish - engines-dev
-Stockfish - fishtest-dev
-Stockfish - general-chess
-Stockfish - hardware-discuss
-Stockfish - kaggle-talk
-Stockfish - lawsuit-discuss
-Stockfish - Livestreams
-Stockfish - nnue-dev
-Stockfish - off-topic
-Stockfish - programming
-Stockfish - sf-dev
-Stockfish - sf-general
-Stockfish - sf-web-and-wiki
-Stockfish - top-dev-chill
-```
-
-</details>

@@ -1,7 +1,7 @@
 [project]
 name = "engine-dev-llm"
 version = "0.1.0"
-description = "Fine-tune an LLM on chess-engine-dev Discord chats to simulate the community."
+description = "Fine-tune an LLM on Discord chat exports to simulate a channel."
 requires-python = ">=3.11,<3.14"
 dependencies = [
     # transformers 5.x for Gemma 4 (gemma4_unified) and AutoModelForMultimodalLM;
