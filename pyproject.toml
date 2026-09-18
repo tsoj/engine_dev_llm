@@ -19,6 +19,8 @@ dependencies = [
     "pillow>=10.0",
     # evaluate.py plots the loss curves.
     "matplotlib>=3.8",
+    # bot.py runs the model as a Discord bot.
+    "discord-py>=2.4",
 ]
 
 [dependency-groups]

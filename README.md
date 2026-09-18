@@ -123,6 +123,45 @@ trained with. Weights are loaded in 4-bit by default, which needs roughly
 10 GB of VRAM (an estimate). Use `--quantization 8bit` or `none` if you have
 more memory.
 
+## 6. Discord bot
+
+`bot.py` runs the model as a Discord bot that writes as one member of the
+dataset. It answers when it is mentioned or replied to, and with
+`--reply_chance 0.1` it also joins in on its own after about every tenth message.
+As long as the model predicts that the persona would write the next message too,
+the bot sends up to `--max_messages` (default 5) messages in a row. It stops early
+when someone else writes in the meantime. Before answering it pauses for a random
+time of at least 0.2 s. The pause is most likely around 0.5 s if the bot wrote in
+the last 10 seconds, and grows to around 4 s the longer it has been quiet
+(`--reaction_floor_seconds`, `--reaction_peak_active_seconds`,
+`--reaction_peak_idle_seconds`). It also doesn't write faster than a person:
+if a message is generated faster than it could be typed at `--typing_wpm`
+(default 60 words per minute), the bot keeps showing "typing…" until then.
+Each Discord channel gets its own conversation, started from its most recent
+messages (`--history_messages`).
+
+Setting up the bot account:
+
+1. Create an application at https://discord.com/developers/applications. On its
+   **Bot** page, copy the token and enable **Message Content Intent**.
+2. Under **OAuth2 → URL Generator**, select the scope `bot` and the permissions
+   *View Channels*, *Send Messages* and *Read Message History*. Open the
+   generated link to add the bot to a server.
+
+```bash
+export DISCORD_BOT_TOKEN="the.bot.token"
+./run.sh bot.py --model runs/first-try/adapter --persona "nickname" \
+    --channel "My Server - general" --channel_ids 123456789012345678
+```
+
+`--persona` must be spelled as in the dataset (the server nickname).
+`--channel` is the trained channel whose style the bot should use, and
+`--channel_ids` limits the bot to certain Discord channels (right-click →
+*Copy Channel ID* with Developer Mode on).
+
+Only imitate people who agreed to it. Discord's developer policy doesn't allow
+bots that impersonate others.
+
 # Switching to a different model
 
 Everything model-specific lives in `model_spec.py`: the expected architecture and

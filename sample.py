@@ -22,7 +22,7 @@ from transformers import HfArgumentParser, set_seed
 
 import model_spec
 from chat_format import ChatFormat
-from generate import Conversation, SamplingConfig, load_for_inference, resolve_context_tokens, split_chunk
+from inference import Conversation, SamplingConfig, load_for_inference, resolve_context_tokens, split_chunk
 
 
 @dataclass

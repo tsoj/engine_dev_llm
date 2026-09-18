@@ -26,7 +26,7 @@ from tqdm import tqdm
 from transformers import HfArgumentParser
 
 import model_spec
-from generate import load_for_inference, trained_context_tokens
+from inference import load_for_inference, trained_context_tokens
 from sample import adapter_name, collect_adapters
 from train import check_dataset_tokenizer, read_dataset_meta
 

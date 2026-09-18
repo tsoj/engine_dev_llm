@@ -26,17 +26,13 @@ from tqdm import tqdm
 from transformers import HfArgumentParser
 
 import model_spec
-from chat_format import ChatFormat, Message
+from chat_format import ChatFormat, Message, with_placeholders
 
 DATASET_FORMAT_VERSION = 1
 
 # DiscordChatExporter message types that are actual chat messages. Everything
 # else (joins, pins, poll results, slash command responses, ...) is skipped.
 CHAT_MESSAGE_TYPES = {"Default", "Reply"}
-
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif"}
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".mkv"}
-AUDIO_EXTENSIONS = {".mp3", ".ogg", ".wav", ".m4a", ".flac"}
 
 
 @dataclass
@@ -79,17 +75,6 @@ class DataConfig:
     )
 
 
-def attachment_placeholder(file_name: str) -> str:
-    extension = Path(file_name).suffix.lower()
-    if extension in IMAGE_EXTENSIONS:
-        return "[image]"
-    if extension in VIDEO_EXTENSIONS:
-        return "[video]"
-    if extension in AUDIO_EXTENSIONS:
-        return "[audio]"
-    return "[file]"
-
-
 def load_channel(path: Path, cfg: DataConfig) -> tuple[str, list[Message]]:
     """Read one export. Only the few fields we need are accessed, so changes to
     unrelated parts of the DiscordChatExporter format don't break this."""
@@ -110,11 +95,14 @@ def load_channel(path: Path, cfg: DataConfig) -> tuple[str, list[Message]]:
         if message["author"].get("isBot") and not cfg.include_bots:
             continue
 
-        content = message["content"].strip()
+        content = message["content"]
         if cfg.attachment_placeholders:
-            extras = [attachment_placeholder(a["fileName"]) for a in message.get("attachments", [])]
-            extras += [f"[sticker: {s['name']}]" for s in message.get("stickers", [])]
-            content = "\n".join(part for part in [content, " ".join(extras)] if part)
+            content = with_placeholders(
+                content,
+                [a["fileName"] for a in message.get("attachments", [])],
+                [s["name"] for s in message.get("stickers", [])],
+            )
+        content = content.strip()
         if not content:
             continue
 

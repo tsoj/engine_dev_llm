@@ -13,10 +13,34 @@ string), so training data and generation prompts are guaranteed to match.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from model_spec import TURN_END, TURN_START, check_tokenizer
 
 SYSTEM_ROLE = "system"
+REPLY_SEPARATOR = " replies to "
+
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".mkv"}
+AUDIO_EXTENSIONS = {".mp3", ".ogg", ".wav", ".m4a", ".flac"}
+
+
+def attachment_placeholder(file_name: str) -> str:
+    extension = Path(file_name).suffix.lower()
+    if extension in IMAGE_EXTENSIONS:
+        return "[image]"
+    if extension in VIDEO_EXTENSIONS:
+        return "[video]"
+    if extension in AUDIO_EXTENSIONS:
+        return "[audio]"
+    return "[file]"
+
+
+def with_placeholders(content: str, attachment_names: list[str], sticker_names: list[str]) -> str:
+    """Message text with its attachments and stickers appended as [image], [sticker: name], ..."""
+    extras = [attachment_placeholder(name) for name in attachment_names]
+    extras += [f"[sticker: {name}]" for name in sticker_names]
+    return "\n".join(part for part in [content.strip(), " ".join(extras)] if part)
 
 
 @dataclass(frozen=True)
@@ -26,6 +50,11 @@ class Message:
     reply_to: str | None = None
 
 
+def author_of(role: str) -> str:
+    """The author in a role line built by ChatFormat.role: "alice replies to bob" -> "alice"."""
+    return role.split(REPLY_SEPARATOR, 1)[0]
+
+
 class ChatFormat:
     def __init__(self, tokenizer):
         check_tokenizer(tokenizer)
@@ -33,6 +62,9 @@ class ChatFormat:
         self.bos_id = tokenizer.bos_token_id
         self.turn_end_id = tokenizer.convert_tokens_to_ids(TURN_END)
         self.newline_ids = self.encode("\n")
+        # Every token that contains a line break (in Gemma's vocabulary just runs of "\n"); generating
+        # one ends a role line.
+        self.line_break_ids = [i for token, i in tokenizer.get_vocab().items() if "\n" in token]
         # Longest first, so e.g. "<|image|>" is removed before a shorter token it contains.
         self._special_tokens = sorted(
             (t.content for t in tokenizer.added_tokens_decoder.values() if t.special), key=len, reverse=True
@@ -58,7 +90,7 @@ class ChatFormat:
 
         role = clean(author)
         if reply_to is not None:
-            role += f" replies to {clean(reply_to)}"
+            role += REPLY_SEPARATOR + clean(reply_to)
         return role
 
     def header_ids(self, channel: str) -> list[int]:
